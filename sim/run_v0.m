@@ -28,8 +28,18 @@ truth = generate_trajectory(map, path_nodes, v_cruise, dt);
 %% 3) Build the Simulink model (only once - reused on later runs)
 mdl = 'gps_free_nav_v0';
 mdl_path = fullfile(here, '..', 'models', 'gps_free_nav_v0.slx');
+
+% If a model with this name is already loaded from a *different* copy of
+% this project (e.g. you have more than one clone/folder open), Simulink
+% refuses to load ours on top of it - close that other one first.
+if bdIsLoaded(mdl) && ~strcmpi(get_param(mdl, 'FileName'), mdl_path)
+    close_system(mdl, 0);
+end
+
 if isfile(mdl_path)
-    load_system(mdl_path);
+    if ~bdIsLoaded(mdl)
+        load_system(mdl_path);
+    end
 else
     params = sensor_params();
     build_model(dt, params, mdl_path);
