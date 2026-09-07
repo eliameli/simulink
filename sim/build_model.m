@@ -64,6 +64,14 @@ add_block('simulink/User-Defined Functions/MATLAB Function', mechPath);
 set_param(mechPath, 'Position', pos(2.3, 0.5, 160, 100));
 set_chart_script(mechPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
     'blocks', 'ins_mechanization_block.m')));
+% This block uses a persistent variable to hold its running pose
+% estimate, which Simulink does not allow on a block that inherits a
+% continuous sample time (its inputs run through the Sensor Model
+% subsystem's continuous bias-random-walk Integrator, so without this
+% the block would try to inherit continuous time). Force it to run at
+% the model's fixed discrete step instead - that's what the RK4
+% mechanization is designed for anyway.
+try_set_param(mechPath, 'SampleTime', num2str(dt));
 
 add_line(mdl, 'Sensor Model/1', 'INS Mechanization (RK4)/1', 'autorouting', 'on');
 add_line(mdl, 'Sensor Model/2', 'INS Mechanization (RK4)/2', 'autorouting', 'on');
@@ -82,6 +90,10 @@ add_block('simulink/User-Defined Functions/MATLAB Function', matchPath);
 set_param(matchPath, 'Position', pos(4, 0.5, 160, 100));
 set_chart_script(matchPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
     'blocks', 'map_matching_block.m')));
+% Explicit discrete sample time for consistency with the rest of the
+% fixed-step pipeline (not strictly required - this block has no
+% persistent state - but keeps every stage running at the same rate).
+try_set_param(matchPath, 'SampleTime', num2str(dt));
 
 add_line(mdl, 'INS Mechanization (RK4)/1', 'Map Matching/1', 'autorouting', 'on');
 add_line(mdl, 'INS Mechanization (RK4)/2', 'Map Matching/2', 'autorouting', 'on');
