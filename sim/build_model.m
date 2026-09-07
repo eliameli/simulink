@@ -62,16 +62,17 @@ set_param([mdl '/Ts'], 'Value', sprintf('%.10g', dt), ...
 mechPath = [mdl '/INS Mechanization (RK4)'];
 add_block('simulink/User-Defined Functions/MATLAB Function', mechPath);
 set_param(mechPath, 'Position', pos(2.3, 0.5, 160, 100));
-set_chart_script(mechPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
-    'blocks', 'ins_mechanization_block.m')));
 % This block uses a persistent variable to hold its running pose
 % estimate, which Simulink does not allow on a block that inherits a
 % continuous sample time (its inputs run through the Sensor Model
 % subsystem's continuous bias-random-walk Integrator, so without this
 % the block would try to inherit continuous time). Force it to run at
 % the model's fixed discrete step instead - that's what the RK4
-% mechanization is designed for anyway.
-try_set_param(mechPath, 'SampleTime', num2str(dt));
+% mechanization is designed for anyway. (Sample time is a property of
+% the underlying Stateflow chart object, not a plain block parameter -
+% set it together with the script.)
+set_chart_script(mechPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
+    'blocks', 'ins_mechanization_block.m')), dt);
 
 add_line(mdl, 'Sensor Model/1', 'INS Mechanization (RK4)/1', 'autorouting', 'on');
 add_line(mdl, 'Sensor Model/2', 'INS Mechanization (RK4)/2', 'autorouting', 'on');
@@ -88,12 +89,11 @@ set_param([mdl '/Map Edges'], 'Value', 'map_edges', 'Position', pos(3.6, 2.6, 90
 matchPath = [mdl '/Map Matching'];
 add_block('simulink/User-Defined Functions/MATLAB Function', matchPath);
 set_param(matchPath, 'Position', pos(4, 0.5, 160, 100));
-set_chart_script(matchPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
-    'blocks', 'map_matching_block.m')));
 % Explicit discrete sample time for consistency with the rest of the
 % fixed-step pipeline (not strictly required - this block has no
 % persistent state - but keeps every stage running at the same rate).
-try_set_param(matchPath, 'SampleTime', num2str(dt));
+set_chart_script(matchPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
+    'blocks', 'map_matching_block.m')), dt);
 
 add_line(mdl, 'INS Mechanization (RK4)/1', 'Map Matching/1', 'autorouting', 'on');
 add_line(mdl, 'INS Mechanization (RK4)/2', 'Map Matching/2', 'autorouting', 'on');
@@ -222,11 +222,15 @@ add_line(subPath, [name '_bias0/1'], [name '_sum/3'], 'autorouting', 'on');
 add_line(subPath, [name '_meas_noise/1'], [name '_sum/4'], 'autorouting', 'on');
 end
 
-function set_chart_script(blockPath, script)
-% Insert SCRIPT as the body of the MATLAB Function block at BLOCKPATH.
-% See the "Create MATLAB Function Block Programmatically" pattern in the
-% MATLAB documentation (MATLAB Function blocks are implemented as
-% Stateflow charts under the hood).
+function set_chart_script(blockPath, script, sampleTime)
+% Insert SCRIPT as the body of the MATLAB Function block at BLOCKPATH,
+% and (if SAMPLETIME is given) force that block to run at a fixed
+% discrete sample time instead of inheriting one - required for a block
+% whose script uses a persistent variable. See the "Create MATLAB
+% Function Block Programmatically" pattern in the MATLAB documentation
+% (MATLAB Function blocks are implemented as Stateflow charts under the
+% hood, and sample time is a property of that chart object - not a
+% plain block parameter settable via set_param on the block itself).
 try
     rt = sfroot;
     chart = rt.find('-isa', 'Stateflow.EMChart', 'Path', blockPath);
@@ -236,6 +240,20 @@ catch ME
         ['Could not set the code for %s automatically (%s).\n' ...
          'Open the model, double-click that block, and paste the code from ' ...
          'sim/blocks/ manually instead.'], blockPath, ME.message);
+    return
+end
+
+if nargin >= 3 && ~isempty(sampleTime)
+    try
+        chart.SampleTime = num2str(sampleTime);
+    catch ME2
+        warning('build_model:chartSampleTime', ...
+            ['Could not set the discrete sample time on %s automatically (%s).\n' ...
+             'Open that block''s dialog (right-click > Block Parameters) and set ' ...
+             '"Sample time" to %.10g manually - this block uses a persistent variable ' ...
+             'and will error out if it inherits a continuous sample time.'], ...
+            blockPath, ME2.message, sampleTime);
+    end
 end
 end
 
