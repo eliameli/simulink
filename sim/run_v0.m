@@ -53,8 +53,13 @@ map_edges = map.edges;               %#ok<NASGU>
 set_param(mdl, 'StopTime', num2str(truth.t(end)));
 
 %% 5) Simulate
-sim(mdl);
-% Produces (in the base workspace, via the model's "To Workspace" blocks):
+% Capture the output explicitly instead of relying on the model's "To
+% Workspace" blocks to land their variables in the base workspace on
+% their own - whether they do depends on a model/MATLAB-version setting
+% (Data Import/Export > "Return workspace outputs"), so this is the
+% version-robust way to get logged signals back regardless of that.
+simOut = sim(mdl);
+% Produces, packaged in simOut (one per "To Workspace" block):
 %   meas_log     - [a_meas, w_meas]        noisy sensor output
 %   est_log      - [x,y,psi,v] estimate    raw dead reckoning (drifts!)
 %   matched_log  - [xm, ym]                after snapping to the road map
@@ -62,8 +67,8 @@ sim(mdl);
 %   edge_log     - index of the matched road segment
 
 %% 6) Compare true vs. dead-reckoned vs. map-matched trajectories
-est     = est_log.Data;      % columns: x_est, y_est, psi_est, v_est
-matched = matched_log.Data;  % columns: xm, ym
+est     = simOut.get('est_log').Data;      % columns: x_est, y_est, psi_est, v_est
+matched = simOut.get('matched_log').Data;  % columns: xm, ym
 
 figure('Name', 'GPS-free navigation v0 - trajectory');
 hold on; axis equal; grid on;
