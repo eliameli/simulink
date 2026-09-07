@@ -25,25 +25,24 @@ dt         = 0.01;  % s, fixed step - used for both the truth generation
                      % and the Simulink model, they must match
 truth = generate_trajectory(map, path_nodes, v_cruise, dt);
 
-%% 3) Build the Simulink model (only once - reused on later runs)
+%% 3) (Re)build the Simulink model every run
+% Always rebuilt from build_model.m rather than reused from disk: while
+% this v0 pipeline is still being debugged, a stale .slx left over from
+% an earlier version of build_model.m is a common source of confusing
+% "it still fails the same way" reports even after the source is fixed.
+% Rebuilding is fast, so there is no real cost to doing it every time.
 mdl = 'gps_free_nav_v0';
 mdl_path = fullfile(here, '..', 'models', 'gps_free_nav_v0.slx');
 
-% If a model with this name is already loaded from a *different* copy of
-% this project (e.g. you have more than one clone/folder open), Simulink
-% refuses to load ours on top of it - close that other one first.
-if bdIsLoaded(mdl) && ~strcmpi(get_param(mdl, 'FileName'), mdl_path)
+% If a model with this name is already loaded (e.g. from a different
+% copy/folder of this project, or a previous run in this MATLAB
+% session), Simulink refuses to load/overwrite it - close it first.
+if bdIsLoaded(mdl)
     close_system(mdl, 0);
 end
 
-if isfile(mdl_path)
-    if ~bdIsLoaded(mdl)
-        load_system(mdl_path);
-    end
-else
-    params = sensor_params();
-    build_model(dt, params, mdl_path);
-end
+params = sensor_params();
+build_model(dt, params, mdl_path);
 
 %% 4) Provide the model's inputs (it reads these base-workspace variables)
 a_true_ts = [truth.t, truth.a_true]; %#ok<NASGU> (used by the From Workspace block)
