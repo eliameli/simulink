@@ -29,13 +29,18 @@ if nargin < 4 || isempty(save_path)
     save_path = fullfile(fileparts(mfilename('fullpath')), 'truth_trajectory.mat');
 end
 
-% Duration of each heading change at an intermediate waypoint. Since
-% speed is constant (no braking for corners), the vehicle keeps moving
-% forward *while* it turns, covering v_cruise*turn_time meters of arc
-% during the turn instead of pivoting truly in place - keep this short,
-% or corners on a route with short segments (typical when you click a
-% route close together) visibly bulge outward past where you clicked.
-turn_time = 0.5; % s
+% Duration of a full 90-degree turn. Since speed is constant (no
+% braking for corners), the vehicle keeps moving forward *while* it
+% turns, covering some extra arc length during every heading change -
+% so below, the turn's duration (and therefore its extra distance)
+% scales with how sharp it actually is: a real 90-degree corner takes
+% the full turn_time_90, but a 2-degree wobble (typical hand-drawn
+% jitter from map/pick_route.m, which can produce dozens of waypoints
+% along one route) takes almost none. Without this scaling, every one
+% of those small wobbles would cost the same fixed time/distance as a
+% real corner, and a hand-drawn route with many waypoints would end up
+% far longer than the line you actually drew.
+turn_time_90 = 0.5; % s, for a 90-degree turn
 
 nseg        = size(waypoints, 1) - 1;
 seg_vec     = diff(waypoints);
@@ -52,9 +57,14 @@ for k = 1:nseg
 
     if k < nseg
         dpsi = wrap_to_pi(seg_heading(k+1) - seg_heading(k));
-        dur(end+1)   = turn_time;        %#ok<AGROW>
-        a_blk(end+1) = 0;                %#ok<AGROW>
-        w_blk(end+1) = dpsi / turn_time; %#ok<AGROW>
+        % Scale duration by |dpsi| (a 90-degree turn takes turn_time_90,
+        % a tiny wobble takes proportionally less) - this keeps the
+        % turn rate itself roughly constant regardless of how sharp the
+        % corner is, which is closer to how a real vehicle turns anyway.
+        this_turn_time = max(turn_time_90 * abs(dpsi) / (pi/2), dt);
+        dur(end+1)   = this_turn_time;        %#ok<AGROW>
+        a_blk(end+1) = 0;                     %#ok<AGROW>
+        w_blk(end+1) = dpsi / this_turn_time; %#ok<AGROW>
     end
 end
 
