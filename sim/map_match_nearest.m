@@ -14,10 +14,14 @@ function [xm, ym, edge_idx, mismatch] = map_match_nearest(x, y, nodes, edges)
 %   intersections. A more robust version (v1+) would add continuity,
 %   e.g. a Hidden Markov Model over the road graph - see README.md.
 %
-%   This function is a reference copy: the equivalent logic is embedded
-%   directly inside the "Map Matching" MATLAB Function block of the
-%   Simulink model (see sim/blocks/map_matching_block.m) so it can run
-%   inside the model without calling out to this file.
+%   This function is a simplified reference copy for reading/exploring
+%   the idea. The block actually used in the model
+%   (sim/blocks/map_matching_block.m) adds one refinement on top of
+%   this: it sticks to the currently matched road unless another one is
+%   closer by a margin, so the match doesn't flip-flop between two
+%   close roads near an intersection - without that, the plotted path
+%   visibly cuts a diagonal shortcut through the intersection instead
+%   of following one road to the corner.
 
 best_dist = inf;
 xm = x; ym = y; edge_idx = 0;
