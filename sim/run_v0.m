@@ -61,6 +61,11 @@ ins_y0   = truth.y(1);   %#ok<NASGU>
 ins_psi0 = truth.psi(1); %#ok<NASGU>
 ins_v0   = truth.v(1);   %#ok<NASGU>
 
+% How often the "green" trajectory (see build_model.m) snaps itself
+% back onto the nearest road, instead of drifting open-loop like the
+% raw ("red") dead reckoning does.
+periodic_correction_s = 1.5; % s %#ok<NASGU>
+
 set_param(mdl, 'StopTime', num2str(truth.t(end)));
 
 %% 5) Simulate
@@ -73,12 +78,16 @@ simOut = sim(mdl);
 % Produces, packaged in simOut (one per "To Workspace" block):
 %   meas_log     - [a_meas, w_meas]        noisy sensor output
 %   est_log      - [x,y,psi,v] estimate    raw dead reckoning (drifts!)
-%   matched_log  - [xm, ym]                after snapping to the road map
+%   green_log    - [x,y,psi,v] estimate    dead reckoning, periodically
+%                                           snapped back onto the road
+%   matched_log  - [xm, ym]                per-sample road snap applied
+%                                           on top of green_log
 %   mismatch_log - distance to the matched road segment
 %   edge_log     - index of the matched road segment
 
-%% 6) Compare true vs. dead-reckoned vs. map-matched trajectories
+%% 6) Compare true vs. dead-reckoned vs. periodically-corrected vs. map-matched
 est     = simOut.get('est_log').Data;      % columns: x_est, y_est, psi_est, v_est
+green   = simOut.get('green_log').Data;    % columns: x_g, y_g, psi_g, v_g
 matched = simOut.get('matched_log').Data;  % columns: xm, ym
 
 figure('Name', 'GPS-free navigation v0 - trajectory');
@@ -86,19 +95,24 @@ hold on; axis equal; grid on;
 plot_map(map);
 plot(truth.x, truth.y, 'k-', 'LineWidth', 2, 'DisplayName', 'Truth (exact)');
 plot(est(:,1), est(:,2), 'r--', 'LineWidth', 1.2, 'DisplayName', 'Dead reckoning (drifts)');
-plot(matched(:,1), matched(:,2), 'b-', 'LineWidth', 1.2, 'DisplayName', 'Map-matched');
+plot(green(:,1), green(:,2), 'g-', 'LineWidth', 1.2, 'DisplayName', sprintf('Periodic snap every %.1fs', periodic_correction_s));
+plot(matched(:,1), matched(:,2), 'b-', 'LineWidth', 1.2, 'DisplayName', 'Map-matched (final)');
 legend('Location', 'best');
 xlabel('x, m'); ylabel('y, m');
-title('True vs. dead-reckoned vs. map-matched trajectory');
+title('True vs. dead-reckoned vs. periodically-corrected vs. map-matched trajectory');
 
 figure('Name', 'GPS-free navigation v0 - error');
 err_dr = hypot(est(:,1) - truth.x, est(:,2) - truth.y);
+err_gr = hypot(green(:,1) - truth.x, green(:,2) - truth.y);
 err_mm = hypot(matched(:,1) - truth.x, matched(:,2) - truth.y);
-plot(truth.t, err_dr, 'r--', 'LineWidth', 1.2, 'DisplayName', 'Dead reckoning error'); hold on; grid on;
-plot(truth.t, err_mm, 'b-', 'LineWidth', 1.2, 'DisplayName', 'Map-matched error');
+hold on; grid on;
+plot(truth.t, err_dr, 'r--', 'LineWidth', 1.2, 'DisplayName', 'Dead reckoning error');
+plot(truth.t, err_gr, 'g-', 'LineWidth', 1.2, 'DisplayName', 'Periodic-snap error');
+plot(truth.t, err_mm, 'b-', 'LineWidth', 1.2, 'DisplayName', 'Map-matched (final) error');
 legend('Location', 'best');
 xlabel('t, s'); ylabel('position error, m');
 title('Position error vs. time');
 
-fprintf('Final dead-reckoning error:  %.2f m\n', err_dr(end));
-fprintf('Final map-matched error:     %.2f m\n', err_mm(end));
+fprintf('Final dead reckoning error:    %.2f m\n', err_dr(end));
+fprintf('Final periodic-snap error:     %.2f m\n', err_gr(end));
+fprintf('Final map-matched error:       %.2f m\n', err_mm(end));

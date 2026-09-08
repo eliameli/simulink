@@ -1,10 +1,14 @@
 function mdl_path = build_model(dt, params, mdl_path)
 %BUILD_MODEL Programmatically build the v0 Simulink model.
 %   MDL_PATH = BUILD_MODEL(DT, PARAMS, MDL_PATH) builds
-%   gps_free_nav_v0.slx: a synthetic IMU sensor model feeding an RK4
-%   dead-reckoning ("INS mechanization") block, followed by a
-%   nearest-road-segment map-matching block, with signal logging to the
-%   base workspace. Saves it to MDL_PATH and returns that path.
+%   gps_free_nav_v0.slx: a synthetic IMU sensor model feeding two
+%   independent RK4 dead-reckoning ("INS mechanization") integrators
+%   run in parallel on the same noisy sensor data - one plain/uncorrected
+%   (the "red" trajectory), one that periodically snaps itself back onto
+%   the nearest road (the "green" trajectory) - and then a per-sample
+%   nearest-road-segment map-matching block applied on top of the green
+%   one (the final "blue" trajectory). Signals are logged to the base
+%   workspace. Saves the model to MDL_PATH and returns that path.
 %
 %   DT     - fixed simulation step [s] (must match the truth trajectory's
 %            time step, see truth/generate_trajectory.m)
@@ -102,15 +106,46 @@ set_param([mdl '/Map Nodes'], 'Value', 'map_nodes', 'Position', pos(3.6, 2, 90, 
 add_block('simulink/Sources/Constant', [mdl '/Map Edges']);
 set_param([mdl '/Map Edges'], 'Value', 'map_edges', 'Position', pos(3.6, 2.6, 90, 30));
 
-% ---- Map Matching MATLAB Function block ---------------------------------
+% ---- "Green": INS Mechanization + Periodic Road Correction --------------
+% Runs the SAME dead-reckoning integration as "INS Mechanization (RK4)"
+% above (identical inputs, identical RK4 method), but on its own
+% independent state: every correction_period seconds it snaps its own
+% position onto the nearest road and aligns its heading to it, instead
+% of drifting open-loop forever. Starts out equal to the uncorrected
+% ("red") estimate, then gets periodically pulled back onto the map.
+add_block('simulink/Sources/Constant', [mdl '/Correction Period']);
+set_param([mdl '/Correction Period'], 'Value', 'periodic_correction_s', ...
+    'Position', pos(3.6, 3.3, 90, 30));
+
+greenPath = [mdl '/INS Mechanization + Periodic Correction'];
+add_block('simulink/User-Defined Functions/MATLAB Function', greenPath);
+set_param(greenPath, 'Position', pos(3.6, 0.5, 170, 130));
+set_chart_script(greenPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
+    'blocks', 'ins_mechanization_periodic_block.m')));
+
+add_line(mdl, 'Sensor Model/1', 'INS Mechanization + Periodic Correction/1', 'autorouting', 'on');
+add_line(mdl, 'Sensor Model/2', 'INS Mechanization + Periodic Correction/2', 'autorouting', 'on');
+add_line(mdl, 'Ts/1', 'INS Mechanization + Periodic Correction/3', 'autorouting', 'on');
+add_line(mdl, 'x0/1', 'INS Mechanization + Periodic Correction/4', 'autorouting', 'on');
+add_line(mdl, 'y0/1', 'INS Mechanization + Periodic Correction/5', 'autorouting', 'on');
+add_line(mdl, 'psi0/1', 'INS Mechanization + Periodic Correction/6', 'autorouting', 'on');
+add_line(mdl, 'v0/1', 'INS Mechanization + Periodic Correction/7', 'autorouting', 'on');
+add_line(mdl, 'Map Nodes/1', 'INS Mechanization + Periodic Correction/8', 'autorouting', 'on');
+add_line(mdl, 'Map Edges/1', 'INS Mechanization + Periodic Correction/9', 'autorouting', 'on');
+add_line(mdl, 'Correction Period/1', 'INS Mechanization + Periodic Correction/10', 'autorouting', 'on');
+
+% ---- Map Matching MATLAB Function block ----------------------------------
+% Final result: per-sample nearest-road matching (with hysteresis)
+% applied on top of the already periodically-corrected "green" signal,
+% not on the raw ("red") dead reckoning.
 matchPath = [mdl '/Map Matching'];
 add_block('simulink/User-Defined Functions/MATLAB Function', matchPath);
-set_param(matchPath, 'Position', pos(4, 0.5, 160, 100));
+set_param(matchPath, 'Position', pos(4.3, 0.5, 160, 100));
 set_chart_script(matchPath, fileread(fullfile(fileparts(mfilename('fullpath')), ...
     'blocks', 'map_matching_block.m')));
 
-add_line(mdl, 'INS Mechanization (RK4)/1', 'Map Matching/1', 'autorouting', 'on');
-add_line(mdl, 'INS Mechanization (RK4)/2', 'Map Matching/2', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization + Periodic Correction/1', 'Map Matching/1', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization + Periodic Correction/2', 'Map Matching/2', 'autorouting', 'on');
 add_line(mdl, 'Map Nodes/1', 'Map Matching/3', 'autorouting', 'on');
 add_line(mdl, 'Map Edges/1', 'Map Matching/4', 'autorouting', 'on');
 
@@ -135,13 +170,24 @@ set_param([mdl '/est_log'], 'VariableName', 'est_log', ...
     'SaveFormat', 'Timeseries', 'MaxDataPoints', 'inf', 'Position', pos(3.4, 3.6, 90, 30));
 add_line(mdl, 'Mux Est/1', 'est_log/1', 'autorouting', 'on');
 
+add_block('simulink/Signal Routing/Mux', [mdl '/Mux Green']);
+set_param([mdl '/Mux Green'], 'Inputs', '4', 'Position', pos(3.9, 2.3, 20, 80));
+add_line(mdl, 'INS Mechanization + Periodic Correction/1', 'Mux Green/1', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization + Periodic Correction/2', 'Mux Green/2', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization + Periodic Correction/3', 'Mux Green/3', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization + Periodic Correction/4', 'Mux Green/4', 'autorouting', 'on');
+add_block('simulink/Sinks/To Workspace', [mdl '/green_log']);
+set_param([mdl '/green_log'], 'VariableName', 'green_log', ...
+    'SaveFormat', 'Timeseries', 'MaxDataPoints', 'inf', 'Position', pos(4.1, 4.6, 90, 30));
+add_line(mdl, 'Mux Green/1', 'green_log/1', 'autorouting', 'on');
+
 add_block('simulink/Signal Routing/Mux', [mdl '/Mux Matched']);
-set_param([mdl '/Mux Matched'], 'Inputs', '2', 'Position', pos(5, 0.3, 20, 60));
+set_param([mdl '/Mux Matched'], 'Inputs', '2', 'Position', pos(5.3, 0.3, 20, 60));
 add_line(mdl, 'Map Matching/1', 'Mux Matched/1', 'autorouting', 'on');
 add_line(mdl, 'Map Matching/2', 'Mux Matched/2', 'autorouting', 'on');
 add_block('simulink/Sinks/To Workspace', [mdl '/matched_log']);
 set_param([mdl '/matched_log'], 'VariableName', 'matched_log', ...
-    'SaveFormat', 'Timeseries', 'MaxDataPoints', 'inf', 'Position', pos(5.6, 0.3, 90, 30));
+    'SaveFormat', 'Timeseries', 'MaxDataPoints', 'inf', 'Position', pos(5.9, 0.3, 90, 30));
 add_line(mdl, 'Mux Matched/1', 'matched_log/1', 'autorouting', 'on');
 
 add_block('simulink/Sinks/To Workspace', [mdl '/mismatch_log']);
