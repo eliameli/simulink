@@ -29,7 +29,13 @@ if nargin < 4 || isempty(save_path)
     save_path = fullfile(fileparts(mfilename('fullpath')), 'truth_trajectory.mat');
 end
 
-turn_time = 2.0; % s, duration of each in-place heading change
+% Duration of each heading change at an intermediate waypoint. Since
+% speed is constant (no braking for corners), the vehicle keeps moving
+% forward *while* it turns, covering v_cruise*turn_time meters of arc
+% during the turn instead of pivoting truly in place - keep this short,
+% or corners on a route with short segments (typical when you click a
+% route close together) visibly bulge outward past where you clicked.
+turn_time = 0.5; % s
 
 nseg        = size(waypoints, 1) - 1;
 seg_vec     = diff(waypoints);

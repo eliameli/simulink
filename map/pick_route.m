@@ -22,6 +22,23 @@ while numel(x) < 2
 end
 
 waypoints = [x, y];
+
+% Drop accidental double-clicks / jitter: two clicks a few pixels apart
+% (in map units) add a near-zero-length segment plus an extra heading
+% change in generate_trajectory.m, which visibly bulges the route at
+% that spot. Merge any consecutive points closer than min_dist.
+min_dist = 3; % m
+keep = true(size(waypoints, 1), 1);
+last = waypoints(1, :);
+for i = 2:size(waypoints, 1)
+    if norm(waypoints(i, :) - last) < min_dist
+        keep(i) = false;
+    else
+        last = waypoints(i, :);
+    end
+end
+waypoints = waypoints(keep, :);
+
 plot(waypoints(:,1), waypoints(:,2), 'm.-', 'MarkerSize', 20, 'LineWidth', 1.5, ...
     'DisplayName', 'Your route');
 legend('Location', 'best');
