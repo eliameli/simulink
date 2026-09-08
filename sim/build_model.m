@@ -102,11 +102,6 @@ set_param([mdl '/Map Nodes'], 'Value', 'map_nodes', 'Position', pos(3.6, 2, 90, 
 add_block('simulink/Sources/Constant', [mdl '/Map Edges']);
 set_param([mdl '/Map Edges'], 'Value', 'map_edges', 'Position', pos(3.6, 2.6, 90, 30));
 
-% INS Mechanization also needs the map nodes for its corner-snap
-% correction (see sim/blocks/ins_mechanization_block.m) - wired here,
-% after "Map Nodes" exists, rather than up in that block's section.
-add_line(mdl, 'Map Nodes/1', 'INS Mechanization (RK4)/8', 'autorouting', 'on');
-
 % ---- Map Matching MATLAB Function block ----------------------------------
 % Per-sample nearest-road matching (with hysteresis) applied directly
 % on top of the raw ("red") dead reckoning.
