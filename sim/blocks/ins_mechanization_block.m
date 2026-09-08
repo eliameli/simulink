@@ -48,14 +48,27 @@ function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0
 % smaller turns a few hundredths of a second apart both produced
 % exactly one correction, landing on the same node/heading; a turn far
 % from any map node correctly produced zero corrections.
+%
+% Startup warm-up: the corner-snap above only ever fires once a turn
+% has been detected and confirmed, so for a route that starts with a
+% long straight stretch there's nothing to correct against yet - and
+% ordinary sensor bias/noise can already carry the estimate visibly off
+% the road before the very first turn even happens. For the first
+% WARMUP_TIME seconds, skip turn detection and instead just continuously
+% project the running position onto the nearest road (like the "Map
+% Matching" block does, but every step, not just for display) and align
+% heading to that road's direction - the same idea as the corner snap,
+% just running continuously instead of waiting for a turn.
 
 persistent s
+persistent t_elapsed
 persistent high_time
 persistent low_time
 persistent rate_state
 persistent since_correction
 if isempty(s)
     s = [x0; y0; psi0; v0];
+    t_elapsed = 0;
     high_time = 0;
     low_time = 0;
     rate_state = 0;       % 0 = confirmed straight, 1 = confirmed turning
@@ -63,8 +76,10 @@ if isempty(s)
 end
 
 s = rk4_step(s, a_meas, w_meas, Ts);
+t_elapsed = t_elapsed + Ts;
 since_correction = since_correction + Ts;
 
+warmup_time     = 3.0;  % s, see note above
 rate_threshold_high = 0.35; % rad/s (~20 deg/s) - enter "turning"
 rate_threshold_low  = 0.17; % rad/s (~10 deg/s) - exit "turning" (hysteresis gap vs. the enter threshold)
 debounce_time   = 0.05; % s, rate must stay past a threshold this long to count
@@ -72,30 +87,37 @@ cooldown_s      = 1.0;  % s, minimum time between corrections
 capture_radius  = 30;   % m, only correct if this close to a map node
 position_blend  = 0.7;  % 0..1, how much of the way to pull toward the node (not a hard teleport)
 
-if abs(w_meas) > rate_threshold_high
-    high_time = high_time + Ts;
-    low_time = 0;
-elseif abs(w_meas) < rate_threshold_low
-    low_time = low_time + Ts;
-    high_time = 0;
+if t_elapsed <= warmup_time
+    [px, py, edir] = nearest_edge_point(s(1), s(2), nodes, edges);
+    s(1) = px;
+    s(2) = py;
+    s(3) = pick_heading(edir, s(3));
 else
-    high_time = 0;
-    low_time = 0;
-end
+    if abs(w_meas) > rate_threshold_high
+        high_time = high_time + Ts;
+        low_time = 0;
+    elseif abs(w_meas) < rate_threshold_low
+        low_time = low_time + Ts;
+        high_time = 0;
+    else
+        high_time = 0;
+        low_time = 0;
+    end
 
-if rate_state == 0 && high_time >= debounce_time
-    rate_state = 1;
-end
+    if rate_state == 0 && high_time >= debounce_time
+        rate_state = 1;
+    end
 
-if rate_state == 1 && low_time >= debounce_time
-    rate_state = 0;
-    if since_correction >= cooldown_s
-        [nx, ny, npsi, found] = try_snap(s(1), s(2), s(3), nodes, edges, capture_radius);
-        if found
-            s(1) = s(1) + position_blend * (nx - s(1));
-            s(2) = s(2) + position_blend * (ny - s(2));
-            s(3) = npsi;
-            since_correction = 0;
+    if rate_state == 1 && low_time >= debounce_time
+        rate_state = 0;
+        if since_correction >= cooldown_s
+            [nx, ny, npsi, found] = try_snap(s(1), s(2), s(3), nodes, edges, capture_radius);
+            if found
+                s(1) = s(1) + position_blend * (nx - s(1));
+                s(2) = s(2) + position_blend * (ny - s(2));
+                s(3) = npsi;
+                since_correction = 0;
+            end
         end
     end
 end
@@ -150,4 +172,46 @@ end
 
 function a = wrap_to_pi(a)
 a = mod(a + pi, 2*pi) - pi;
+end
+
+function [px, py, edir] = nearest_edge_point(x, y, nodes, edges)
+% Closest point on the closest road segment, and that segment's
+% direction (as a unit-heading angle) - same nearest-point-on-segment
+% idea as sim/blocks/map_matching_block.m, used here for the startup
+% warm-up instead of hysteresis-based matching.
+best_dist = inf;
+px = x; py = y; edir = 0;
+for e = 1:size(edges, 1)
+    a = nodes(edges(e,1), :);
+    b = nodes(edges(e,2), :);
+    ab = b - a;
+    denom = ab(1)^2 + ab(2)^2;
+    if denom < eps
+        t = 0;
+    else
+        t = ((x - a(1))*ab(1) + (y - a(2))*ab(2)) / denom;
+        t = min(max(t, 0), 1);
+    end
+    proj = a + t*ab;
+    d = hypot(x - proj(1), y - proj(2));
+    if d < best_dist
+        best_dist = d;
+        px = proj(1); py = proj(2);
+        edir = atan2(ab(2), ab(1));
+    end
+end
+end
+
+function h = pick_heading(edir, current_psi)
+% A road segment's direction is ambiguous by 180 degrees (it doesn't
+% know which way you're driving on it) - pick whichever of the two
+% matches the current heading more closely, so warm-up doesn't flip
+% the direction of travel.
+cand1 = edir;
+cand2 = wrap_to_pi(edir + pi);
+if abs(wrap_to_pi(cand1 - current_psi)) <= abs(wrap_to_pi(cand2 - current_psi))
+    h = cand1;
+else
+    h = cand2;
+end
 end
