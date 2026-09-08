@@ -109,13 +109,19 @@ set_param([mdl '/Map Edges'], 'Value', 'map_edges', 'Position', pos(3.6, 2.6, 90
 % ---- "Green": INS Mechanization + Periodic Road Correction --------------
 % Runs the SAME dead-reckoning integration as "INS Mechanization (RK4)"
 % above (identical inputs, identical RK4 method), but on its own
-% independent state: every correction_period seconds it snaps its own
-% position onto the nearest road and aligns its heading to it, instead
-% of drifting open-loop forever. Starts out equal to the uncorrected
-% ("red") estimate, then gets periodically pulled back onto the map.
+% independent state: every correction_period seconds - OR immediately,
+% if it has drifted more than gap_threshold_m from the raw ("red")
+% estimate - it snaps its own position onto the nearest road and aligns
+% its heading to it, instead of drifting open-loop forever. Starts out
+% equal to the uncorrected ("red") estimate, then gets pulled back onto
+% the map.
 add_block('simulink/Sources/Constant', [mdl '/Correction Period']);
 set_param([mdl '/Correction Period'], 'Value', 'periodic_correction_s', ...
     'Position', pos(3.6, 3.3, 90, 30));
+
+add_block('simulink/Sources/Constant', [mdl '/Gap Threshold']);
+set_param([mdl '/Gap Threshold'], 'Value', 'gap_threshold_m', ...
+    'Position', pos(3.6, 3.9, 90, 30));
 
 greenPath = [mdl '/INS Mechanization + Periodic Correction'];
 add_block('simulink/User-Defined Functions/MATLAB Function', greenPath);
@@ -133,6 +139,9 @@ add_line(mdl, 'v0/1', 'INS Mechanization + Periodic Correction/7', 'autorouting'
 add_line(mdl, 'Map Nodes/1', 'INS Mechanization + Periodic Correction/8', 'autorouting', 'on');
 add_line(mdl, 'Map Edges/1', 'INS Mechanization + Periodic Correction/9', 'autorouting', 'on');
 add_line(mdl, 'Correction Period/1', 'INS Mechanization + Periodic Correction/10', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization (RK4)/1', 'INS Mechanization + Periodic Correction/11', 'autorouting', 'on');
+add_line(mdl, 'INS Mechanization (RK4)/2', 'INS Mechanization + Periodic Correction/12', 'autorouting', 'on');
+add_line(mdl, 'Gap Threshold/1', 'INS Mechanization + Periodic Correction/13', 'autorouting', 'on');
 
 % ---- Map Matching MATLAB Function block ----------------------------------
 % Final result: per-sample nearest-road matching (with hysteresis)

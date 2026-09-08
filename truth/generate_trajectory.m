@@ -69,17 +69,31 @@ for k = 1:nseg
 end
 
 % ---- Sample (a_true, w_true) on a uniform time grid ----
-total_t = sum(dur);
-t = (0:dt:total_t)';
-a_true = zeros(size(t));
-w_true = zeros(size(t));
-tb = 0;
+% Build directly from an integer sample count per block, NOT a
+% time-window mask (t >= tb & t < tb+dur(k)): a mask can silently drop
+% an entire block if its window happens to fall between two grid
+% points (a real risk for a very short block - e.g. a small heading
+% wobble whose duration is clamped near one sample by the scaling
+% above), because floating-point tb rarely lands exactly on a multiple
+% of dt. Rounding each block to whole samples guarantees every block,
+% however short, contributes at least one real sample - no gyro turn
+% event can vanish from the signal.
+n_samples = max(1, round(dur / dt));
+a_parts = cell(1, numel(dur));
+w_parts = cell(1, numel(dur));
 for k = 1:numel(dur)
-    mask = t >= tb & t < tb + dur(k);
-    a_true(mask) = a_blk(k);
-    w_true(mask) = w_blk(k);
-    tb = tb + dur(k);
+    a_parts{k} = repmat(a_blk(k), n_samples(k), 1);
+    w_parts{k} = repmat(w_blk(k), n_samples(k), 1);
 end
+a_true = cat(1, a_parts{:});
+w_true = cat(1, w_parts{:});
+t = (0:numel(a_true))' * dt; % one more point than control samples (initial state + one per step)
+% Pad a_true/w_true by one repeated sample so they're the same length
+% as t - convenient for plotting them against t directly. The RK4 loop
+% below only ever reads indices 1..numel(t)-1, so this padded last
+% sample is never actually used for integration.
+a_true(end+1) = a_true(end); %#ok<AGROW>
+w_true(end+1) = w_true(end); %#ok<AGROW>
 
 % ---- Integrate exactly (RK4, zero sensor error) for the true pose ----
 % Starts already moving at v_cruise (constant speed for the whole run).

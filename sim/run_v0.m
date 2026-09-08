@@ -63,8 +63,11 @@ ins_v0   = truth.v(1);   %#ok<NASGU>
 
 % How often the "green" trajectory (see build_model.m) snaps itself
 % back onto the nearest road, instead of drifting open-loop like the
-% raw ("red") dead reckoning does.
+% raw ("red") dead reckoning does. It also snaps immediately (without
+% waiting for the timer) whenever it has drifted more than
+% gap_threshold_m away from the raw ("red") estimate.
 periodic_correction_s = 1.5; % s %#ok<NASGU>
+gap_threshold_m       = 15;  % m %#ok<NASGU>
 
 set_param(mdl, 'StopTime', num2str(truth.t(end)));
 
@@ -142,3 +145,24 @@ plot(truth.t, rad2deg(unwrap(green(:,3))), 'g-', 'DisplayName', 'Periodic-snap h
 legend('Location', 'best');
 xlabel('t, s'); ylabel('heading (psi), deg');
 title('Heading over time: look for a growing gap BEFORE each turn');
+
+%% 8) Diagnostics: is green actually moving, or stuck?
+% x(t) and y(t) separately (not just the x-y trajectory plot) make it
+% obvious whether green is tracking red between corrections (it should
+% move almost identically to red until the next snap) or is frozen.
+figure('Name', 'GPS-free navigation v0 - green vs red over time');
+subplot(2,1,1);
+plot(truth.t, truth.x, 'k-', 'LineWidth', 1.5, 'DisplayName', 'Truth x'); hold on; grid on;
+plot(truth.t, est(:,1), 'r--', 'DisplayName', 'Dead-reckoned x');
+plot(truth.t, green(:,1), 'g-', 'DisplayName', 'Periodic-snap x');
+legend('Location', 'best');
+xlabel('t, s'); ylabel('x, m');
+title('x(t): is green actually moving between corrections?');
+
+subplot(2,1,2);
+plot(truth.t, truth.y, 'k-', 'LineWidth', 1.5, 'DisplayName', 'Truth y'); hold on; grid on;
+plot(truth.t, est(:,2), 'r--', 'DisplayName', 'Dead-reckoned y');
+plot(truth.t, green(:,2), 'g-', 'DisplayName', 'Periodic-snap y');
+legend('Location', 'best');
+xlabel('t, s'); ylabel('y, m');
+title('y(t): is green actually moving between corrections?');

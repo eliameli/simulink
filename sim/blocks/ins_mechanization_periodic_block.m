@@ -1,4 +1,4 @@
-function [x, y, psi, v] = ins_mechanization_periodic(a_meas, w_meas, Ts, x0, y0, psi0, v0, nodes, edges, correction_period)
+function [x, y, psi, v] = ins_mechanization_periodic(a_meas, w_meas, Ts, x0, y0, psi0, v0, nodes, edges, correction_period, red_x, red_y, gap_threshold)
 %#codegen
 % INS Mechanization + Periodic Road Correction - MATLAB Function block.
 %
@@ -11,15 +11,20 @@ function [x, y, psi, v] = ins_mechanization_periodic(a_meas, w_meas, Ts, x0, y0,
 % Runs the SAME RK4 dead-reckoning integration as
 % "INS Mechanization (RK4)" (sim/blocks/ins_mechanization_block.m), on
 % its own independent state - starts out identical to that block's
-% (never-corrected) output, but every CORRECTION_PERIOD seconds it
-% snaps its own running position onto the nearest road (same
-% nearest-segment-plus-hysteresis idea as
+% (never-corrected) output, but re-snaps its own running position onto
+% the nearest road (same nearest-segment-plus-hysteresis idea as
 % sim/blocks/map_matching_block.m) and aligns its heading to that
-% road's direction, so drift doesn't keep accumulating unchecked
-% between corrections. This is the "green" trajectory: starts as the
-% raw ("red") dead reckoning, periodically pulled back onto the map -
-% the "Map Matching" block then does its per-sample matching on top of
-% this (already road-aware) signal instead of on the raw one.
+% road's direction whenever EITHER of two things happens:
+%   - CORRECTION_PERIOD seconds have passed since the last correction, or
+%   - it has drifted more than GAP_THRESHOLD meters away from the
+%     uncorrected ("red") estimate (RED_X, RED_Y) - a safety net so a
+%     bad correction (or one that hasn't fired yet) can't leave it
+%     stranded far from where the raw sensor integration says the
+%     vehicle actually is.
+% This is the "green" trajectory: starts as the raw ("red") dead
+% reckoning, then gets pulled back onto the map - the "Map Matching"
+% block then does its per-sample matching on top of this (already
+% road-aware) signal instead of on the raw one.
 
 persistent s
 persistent t_acc
@@ -33,7 +38,10 @@ end
 s = rk4_step(s, a_meas, w_meas, Ts);
 t_acc = t_acc + Ts;
 
-if t_acc >= correction_period
+gap = hypot(s(1) - red_x, s(2) - red_y);
+need_correction = (t_acc >= correction_period) || (gap > gap_threshold);
+
+if need_correction
     t_acc = 0;
     [xm, ym, e] = match_with_hysteresis(s(1), s(2), nodes, edges, cur_edge);
     cur_edge = e;
