@@ -53,10 +53,24 @@ set_param(sensPath, 'Position', pos(1, 0.5, 140, 90));
 add_line(mdl, 'a_true/1', 'Sensor Model/1', 'autorouting', 'on');
 add_line(mdl, 'w_true/1', 'Sensor Model/2', 'autorouting', 'on');
 
-% ---- Ts constant (fixed step size, fed into the mechanization block) --
+% ---- Ts and initial-pose constants (fed into the mechanization block) --
 add_block('simulink/Sources/Constant', [mdl '/Ts']);
 set_param([mdl '/Ts'], 'Value', sprintf('%.10g', dt), ...
     'Position', pos(2, 2.3, 60, 30));
+
+% Dead reckoning always needs a known starting pose. The route (and
+% hence the start point) is chosen interactively per run (see
+% map/pick_route.m), so it can't be a literal inside the block - these
+% four constants read it from the base workspace instead (run_v0.m sets
+% them from the ground truth's first sample: ins_x0/ins_y0/ins_psi0/ins_v0).
+add_block('simulink/Sources/Constant', [mdl '/x0']);
+set_param([mdl '/x0'], 'Value', 'ins_x0', 'Position', pos(2, 2.7, 60, 30));
+add_block('simulink/Sources/Constant', [mdl '/y0']);
+set_param([mdl '/y0'], 'Value', 'ins_y0', 'Position', pos(2, 3.1, 60, 30));
+add_block('simulink/Sources/Constant', [mdl '/psi0']);
+set_param([mdl '/psi0'], 'Value', 'ins_psi0', 'Position', pos(2, 3.5, 60, 30));
+add_block('simulink/Sources/Constant', [mdl '/v0']);
+set_param([mdl '/v0'], 'Value', 'ins_v0', 'Position', pos(2, 3.9, 60, 30));
 
 % ---- INS Mechanization (RK4) MATLAB Function block ---------------------
 mechPath = [mdl '/INS Mechanization (RK4)'];
@@ -76,6 +90,10 @@ set_chart_script(mechPath, fileread(fullfile(fileparts(mfilename('fullpath')), .
 add_line(mdl, 'Sensor Model/1', 'INS Mechanization (RK4)/1', 'autorouting', 'on');
 add_line(mdl, 'Sensor Model/2', 'INS Mechanization (RK4)/2', 'autorouting', 'on');
 add_line(mdl, 'Ts/1', 'INS Mechanization (RK4)/3', 'autorouting', 'on');
+add_line(mdl, 'x0/1', 'INS Mechanization (RK4)/4', 'autorouting', 'on');
+add_line(mdl, 'y0/1', 'INS Mechanization (RK4)/5', 'autorouting', 'on');
+add_line(mdl, 'psi0/1', 'INS Mechanization (RK4)/6', 'autorouting', 'on');
+add_line(mdl, 'v0/1', 'INS Mechanization (RK4)/7', 'autorouting', 'on');
 
 % ---- Map data constants -------------------------------------------------
 add_block('simulink/Sources/Constant', [mdl '/Map Nodes']);

@@ -1,4 +1,4 @@
-function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts)
+function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0)
 %#codegen
 % INS Mechanization (RK4) - MATLAB Function block.
 %
@@ -10,17 +10,16 @@ function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts)
 % Dead-reckoning: integrates the noisy sensor measurements (a_meas,
 % w_meas) forward in time with RK4 (not Euler) to keep a running
 % estimate of the vehicle pose [x; y; psi; v]. Ts is the fixed sample
-% time (must match the model's fixed-step size).
-%
-% v0 limitation: the initial pose below is hardcoded to match the
-% default synthetic map/path (map/generate_map.m, sim/run_v0.m), which
-% starts at node (0,0) heading east. If you change the starting node or
-% heading, update s below to match - a later version should turn this
-% into a block parameter instead of a literal.
+% time (must match the model's fixed-step size). x0,y0,psi0,v0 is the
+% known starting pose - dead reckoning always needs *some* known
+% starting point, so this comes in from outside (set by run_v0.m from
+% the ground-truth trajectory's first sample) rather than being
+% hardcoded, since the route (and therefore the start point) changes
+% every time you click a new one with map/pick_route.m.
 
 persistent s
 if isempty(s)
-    s = [0; 0; 0; 0]; % [x0; y0; psi0; v0]
+    s = [x0; y0; psi0; v0];
 end
 
 s = rk4_step(s, a_meas, w_meas, Ts);

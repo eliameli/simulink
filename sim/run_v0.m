@@ -16,14 +16,16 @@ addpath(fullfile(here, '..', 'truth'));
 %% 1) Build the (synthetic, v0) road map
 map = generate_map();
 
-%% 2) Ground-truth trajectory: drive through these intersections in order
-% (see map/generate_map.m for how node indices map to (x,y); with the
-% default 3x3 grid this path makes an "L" shape with two turns)
-path_nodes = [1 4 5 6 9];
-v_cruise   = 8;     % m/s cruise speed (~29 km/h)
-dt         = 0.01;  % s, fixed step - used for both the truth generation
-                     % and the Simulink model, they must match
-truth = generate_trajectory(map, path_nodes, v_cruise, dt);
+%% 2) Ground-truth trajectory: click your route on the map
+% Left-click a sequence of waypoints, then press Enter (or right-click)
+% to finish - see map/pick_route.m. The vehicle drives through them at
+% a single constant speed (no acceleration/braking), turning at each
+% intermediate waypoint.
+waypoints = pick_route(map);
+v_cruise  = 8;     % m/s, constant cruise speed (~29 km/h)
+dt        = 0.01;  % s, fixed step - used for both the truth generation
+                    % and the Simulink model, they must match
+truth = generate_trajectory(waypoints, v_cruise, dt);
 
 %% 3) (Re)build the Simulink model every run
 % Always rebuilt from build_model.m rather than reused from disk: while
@@ -49,6 +51,15 @@ a_true_ts = [truth.t, truth.a_true]; %#ok<NASGU> (used by the From Workspace blo
 w_true_ts = [truth.t, truth.w_true]; %#ok<NASGU>
 map_nodes = map.nodes;               %#ok<NASGU>
 map_edges = map.edges;               %#ok<NASGU>
+
+% Dead reckoning has to start from a known pose - use the truth
+% trajectory's own starting point (this is what makes the INS
+% Mechanization block work with whatever route you just clicked,
+% instead of a route fixed at build time).
+ins_x0   = truth.x(1);   %#ok<NASGU>
+ins_y0   = truth.y(1);   %#ok<NASGU>
+ins_psi0 = truth.psi(1); %#ok<NASGU>
+ins_v0   = truth.v(1);   %#ok<NASGU>
 
 set_param(mdl, 'StopTime', num2str(truth.t(end)));
 
