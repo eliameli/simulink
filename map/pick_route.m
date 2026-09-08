@@ -1,45 +1,66 @@
 function waypoints = pick_route(map)
-%PICK_ROUTE Click a driving route on the map with the mouse.
-%   WAYPOINTS = PICK_ROUTE(MAP) shows the road network and lets you
-%   left-click a sequence of points to define the route the vehicle
-%   drives (roughly along the roads, though nothing forces that -
-%   this is v0, click wherever you want the truth trajectory to go).
-%   Press Enter (or right-click / Esc) when you have at least 2 points
-%   to finish. Returns an N x 2 array of [x y] waypoints, in click order.
+%PICK_ROUTE Draw a driving route on the map by dragging the mouse.
+%   WAYPOINTS = PICK_ROUTE(MAP) shows the road network. Press and HOLD
+%   the left mouse button, drag along the route you want to drive, then
+%   release the button when done. Returns an N x 2 array of [x y]
+%   waypoints, resampled along the drawn stroke (at least MIN_DIST
+%   apart, so a slow/jittery drag doesn't produce thousands of
+%   near-zero-length segments).
 
-figure('Name', 'Click your route');
+fig = figure('Name', 'Draw your route');
 hold on; axis equal; grid on;
 plot_map(map);
 xlabel('x, m'); ylabel('y, m');
-title({'Left-click waypoints along the route you want to drive', ...
-       'Press Enter (or right-click) when done - need at least 2 points'});
+title({'Press and HOLD the left mouse button, drag along your route,', ...
+       'release when done'});
 
-[x, y] = ginput; %#ok<ASGLU> click, click, ... Enter to finish
+raw = zeros(0, 2);
+drawing = false;
+h_line = plot(NaN, NaN, 'm.-', 'MarkerSize', 10, 'LineWidth', 1.5, ...
+    'DisplayName', 'Your route');
 
-while numel(x) < 2
-    warndlg('Need at least 2 points - click again.', 'Not enough points');
-    [x, y] = ginput;
+set(fig, 'WindowButtonDownFcn', @on_down);
+set(fig, 'WindowButtonMotionFcn', @on_move);
+set(fig, 'WindowButtonUpFcn', @on_up);
+
+uiwait(fig);
+
+if size(raw, 1) < 2
+    error('pick_route:tooFewPoints', ...
+        'Route too short - hold the mouse button and drag further before releasing.');
 end
 
-waypoints = [x, y];
-
-% Drop accidental double-clicks / jitter: two clicks a few pixels apart
-% (in map units) add a near-zero-length segment plus an extra heading
-% change in generate_trajectory.m, which visibly bulges the route at
-% that spot. Merge any consecutive points closer than min_dist.
-min_dist = 3; % m
-keep = true(size(waypoints, 1), 1);
-last = waypoints(1, :);
-for i = 2:size(waypoints, 1)
-    if norm(waypoints(i, :) - last) < min_dist
-        keep(i) = false;
-    else
-        last = waypoints(i, :);
+min_dist = 5; % m - minimum spacing between kept waypoints
+waypoints = raw(1, :);
+for i = 2:size(raw, 1)
+    if norm(raw(i, :) - waypoints(end, :)) >= min_dist
+        waypoints(end+1, :) = raw(i, :); %#ok<AGROW>
     end
 end
-waypoints = waypoints(keep, :);
+if norm(raw(end, :) - waypoints(end, :)) > 0
+    waypoints(end+1, :) = raw(end, :);
+end
 
-plot(waypoints(:,1), waypoints(:,2), 'm.-', 'MarkerSize', 20, 'LineWidth', 1.5, ...
-    'DisplayName', 'Your route');
 legend('Location', 'best');
+
+    function on_down(~, ~)
+        drawing = true;
+        cp = get(gca, 'CurrentPoint');
+        raw = cp(1, 1:2);
+        set(h_line, 'XData', raw(:,1), 'YData', raw(:,2));
+    end
+
+    function on_move(~, ~)
+        if drawing
+            cp = get(gca, 'CurrentPoint');
+            raw(end+1, :) = cp(1, 1:2); %#ok<AGROW>
+            set(h_line, 'XData', raw(:,1), 'YData', raw(:,2));
+        end
+    end
+
+    function on_up(~, ~)
+        drawing = false;
+        set(fig, 'WindowButtonDownFcn', '', 'WindowButtonMotionFcn', '', 'WindowButtonUpFcn', '');
+        uiresume(fig);
+    end
 end
