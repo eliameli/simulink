@@ -59,9 +59,27 @@ function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0
 % Matching" block does, but every step, not just for display) and align
 % heading to that road's direction - the same idea as the corner snap,
 % just running continuously instead of waiting for a turn.
+%
+% A first version of this picked whichever road segment the position
+% was closest to, full stop - which mis-fired right at the very start
+% whenever the route began at a "dead end" node (one direction removed
+% by map/generate_map.m, so only e.g. "straight ahead" and "turn"
+% actually exist there) and the drawn/clicked starting point wasn't
+% exactly on the intended road's line (it never precisely is, by hand).
+% The intended road doesn't extend backward past its own start node, so
+% its nearest point clamps to that node and can end up geometrically
+% farther away than the *other* road leaving the same node - even
+% though the current heading clearly says which one was meant. Checked
+% against several such near-node starting offsets in a standalone
+% Python re-implementation: plain nearest-distance picked the wrong
+% road every time, while breaking ties (within TIE_TOL) by which
+% direction better matches the current heading picked the right one
+% every time. Hysteresis (persistent WARMUP_EDGE) on top keeps that
+% choice from flip-flopping step to step once it's made.
 
 persistent s
 persistent t_elapsed
+persistent warmup_edge
 persistent high_time
 persistent low_time
 persistent rate_state
@@ -69,6 +87,7 @@ persistent since_correction
 if isempty(s)
     s = [x0; y0; psi0; v0];
     t_elapsed = 0;
+    warmup_edge = 0;
     high_time = 0;
     low_time = 0;
     rate_state = 0;       % 0 = confirmed straight, 1 = confirmed turning
@@ -88,7 +107,7 @@ capture_radius  = 30;   % m, only correct if this close to a map node
 position_blend  = 0.7;  % 0..1, how much of the way to pull toward the node (not a hard teleport)
 
 if t_elapsed <= warmup_time
-    [px, py, edir] = nearest_edge_point(s(1), s(2), nodes, edges);
+    [px, py, edir, warmup_edge] = nearest_edge_point(s(1), s(2), s(3), nodes, edges, warmup_edge);
     s(1) = px;
     s(2) = py;
     s(3) = pick_heading(edir, s(3));
@@ -174,14 +193,27 @@ function a = wrap_to_pi(a)
 a = mod(a + pi, 2*pi) - pi;
 end
 
-function [px, py, edir] = nearest_edge_point(x, y, nodes, edges)
-% Closest point on the closest road segment, and that segment's
-% direction (as a unit-heading angle) - same nearest-point-on-segment
-% idea as sim/blocks/map_matching_block.m, used here for the startup
-% warm-up instead of hysteresis-based matching.
+function [px, py, edir, edge_idx] = nearest_edge_point(x, y, psi, nodes, edges, cur_edge)
+% Closest point on a road segment, that segment's direction, and which
+% segment was picked - same nearest-point-on-segment idea as
+% sim/blocks/map_matching_block.m, but with two extra safeguards
+% needed at the very start (see the note above where this is called):
+%   - among all segments within TIE_TOL of the closest one, pick
+%     whichever direction best matches the current heading, instead of
+%     blindly trusting raw distance (which is ambiguous right where a
+%     road starts, since its nearest point can't extend past that
+%     start node);
+%   - hysteresis (MARGIN) against CUR_EDGE, so the choice doesn't flip
+%     between two similarly-close segments from one step to the next.
+tie_tol = 5; % m
+margin  = 3; % m
+
+n = size(edges, 1);
+proj_x = zeros(n, 1); proj_y = zeros(n, 1);
+proj_d = zeros(n, 1); proj_dir = zeros(n, 1);
 best_dist = inf;
-px = x; py = y; edir = 0;
-for e = 1:size(edges, 1)
+
+for e = 1:n
     a = nodes(edges(e,1), :);
     b = nodes(edges(e,2), :);
     ab = b - a;
@@ -194,12 +226,30 @@ for e = 1:size(edges, 1)
     end
     proj = a + t*ab;
     d = hypot(x - proj(1), y - proj(2));
+    proj_x(e) = proj(1); proj_y(e) = proj(2);
+    proj_d(e) = d; proj_dir(e) = atan2(ab(2), ab(1));
     if d < best_dist
         best_dist = d;
-        px = proj(1); py = proj(2);
-        edir = atan2(ab(2), ab(1));
     end
 end
+
+best_e = 1;
+best_hcost = inf;
+for e = 1:n
+    if proj_d(e) <= best_dist + tie_tol
+        hcost = min(abs(wrap_to_pi(proj_dir(e) - psi)), abs(wrap_to_pi(proj_dir(e) + pi - psi)));
+        if hcost < best_hcost
+            best_hcost = hcost;
+            best_e = e;
+        end
+    end
+end
+
+if cur_edge ~= 0 && proj_d(cur_edge) <= best_dist + margin
+    best_e = cur_edge;
+end
+
+px = proj_x(best_e); py = proj_y(best_e); edir = proj_dir(best_e); edge_idx = best_e;
 end
 
 function h = pick_heading(edir, current_psi)
