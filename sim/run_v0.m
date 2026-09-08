@@ -89,6 +89,7 @@ simOut = sim(mdl);
 est     = simOut.get('est_log').Data;      % columns: x_est, y_est, psi_est, v_est
 green   = simOut.get('green_log').Data;    % columns: x_g, y_g, psi_g, v_g
 matched = simOut.get('matched_log').Data;  % columns: xm, ym
+meas    = simOut.get('meas_log').Data;     % columns: a_meas, w_meas
 
 figure('Name', 'GPS-free navigation v0 - trajectory');
 hold on; axis equal; grid on;
@@ -116,3 +117,28 @@ title('Position error vs. time');
 fprintf('Final dead reckoning error:    %.2f m\n', err_dr(end));
 fprintf('Final periodic-snap error:     %.2f m\n', err_gr(end));
 fprintf('Final map-matched error:       %.2f m\n', err_mm(end));
+
+%% 7) Diagnostics: does the gyro actually "see" each turn, and when does
+% the estimated heading start to diverge from the true heading? Use
+% these two plots to tell apart "the sensor/model missed a turn" (a
+% real bug) from "dead reckoning had already drifted off course before
+% this turn even happened" (expected - it's the whole reason map
+% matching exists). unwrap() avoids fake +-360 degree jumps in the plot.
+figure('Name', 'GPS-free navigation v0 - diagnostics');
+
+subplot(2,1,1);
+plot(truth.t, rad2deg(truth.w_true), 'k-', 'LineWidth', 1.5, 'DisplayName', 'True yaw rate');
+hold on; grid on;
+plot(truth.t, rad2deg(meas(:,2)), 'm-', 'DisplayName', 'Measured (noisy) yaw rate');
+legend('Location', 'best');
+xlabel('t, s'); ylabel('yaw rate, deg/s');
+title('Does the gyro see each turn? (spikes should line up with truth)');
+
+subplot(2,1,2);
+plot(truth.t, rad2deg(unwrap(truth.psi)), 'k-', 'LineWidth', 2, 'DisplayName', 'True heading');
+hold on; grid on;
+plot(truth.t, rad2deg(unwrap(est(:,3))), 'r--', 'DisplayName', 'Dead-reckoned heading');
+plot(truth.t, rad2deg(unwrap(green(:,3))), 'g-', 'DisplayName', 'Periodic-snap heading');
+legend('Location', 'best');
+xlabel('t, s'); ylabel('heading (psi), deg');
+title('Heading over time: look for a growing gap BEFORE each turn');
