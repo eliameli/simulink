@@ -23,9 +23,13 @@ function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0
 % noise/bias (well under 1 deg/s). When a turn is confirmed over, the
 % running position is pulled (partially, not teleported outright)
 % toward the nearest map node, and heading is reset to whichever road
-% leaving that node best matches the current heading - but only if
-% that node is actually close by (CAPTURE_RADIUS), so a heavily-drifted
-% estimate doesn't "cheat" by jumping a long distance.
+% leaving that node best matches the current heading. CAPTURE_RADIUS
+% used to cap how far away a node could still be and count (so a
+% heavily-drifted estimate couldn't "cheat" by jumping a long
+% distance) - but that meant once drift ever exceeded it, no future
+% turn could ever correct it again, which defeats the point: it's now
+% infinite, so a corner-snap always finds and pulls toward the nearest
+% node, however far off that is.
 %
 % An earlier, simpler version of this (bare threshold, no debounce/
 % cooldown) mis-fired repeatedly on a single real corner whenever the
@@ -103,7 +107,7 @@ rate_threshold_high = 0.35; % rad/s (~20 deg/s) - enter "turning"
 rate_threshold_low  = 0.17; % rad/s (~10 deg/s) - exit "turning" (hysteresis gap vs. the enter threshold)
 debounce_time   = 0.05; % s, rate must stay past a threshold this long to count
 cooldown_s      = 1.0;  % s, minimum time between corrections
-capture_radius  = 30;   % m, only correct if this close to a map node
+capture_radius  = inf;  % m, always correct to the nearest node, however far off it's drifted
 position_blend  = 0.7;  % 0..1, how much of the way to pull toward the node (not a hard teleport)
 
 if t_elapsed <= warmup_time
