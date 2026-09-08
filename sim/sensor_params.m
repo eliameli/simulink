@@ -13,12 +13,24 @@ function p = sensor_params()
 %     gyro_bias0_std    - turn-on (constant) bias                 [rad/s]
 %     gyro_bias_rw_std  - bias random-walk rate (per sqrt(s))     [rad/s / sqrt(s)]
 %     gyro_noise_std    - white measurement noise, 1-sigma        [rad/s]
+%
+% Русское резюме: параметры модели ошибок акселерометра и гироскопа.
+% Порядок величины типичен для дешёвого MEMS-датчика, не привязан к
+% конкретной модели/даташиту - можно менять и смотреть, как сильно
+% ошибка датчика влияет на уход dead reckoning и насколько map matching
+% способен это компенсировать.
 
 p.accel_bias0_std   = 0.05;         % ~5 cm/s^2 constant offset
+% ^ м/с^2 - постоянное смещение акселерометра "при включении"
 p.accel_bias_rw_std = 0.001;        % slow drift of the bias over time
+% ^ м/с^2/√с - скорость медленного "уплывания" смещения со временем
 p.accel_noise_std   = 0.02;         % per-sample measurement noise
+% ^ м/с^2 - случайный шум измерения на каждом отсчёте
 
 p.gyro_bias0_std   = deg2rad(0.5);  % ~0.5 deg/s constant offset
+% ^ рад/с (~0.5 град/с) - постоянное смещение гироскопа "при включении"
 p.gyro_bias_rw_std = deg2rad(0.02); % slow drift of the bias over time
+% ^ рад/с/√с - скорость медленного "уплывания" смещения гироскопа со временем
 p.gyro_noise_std   = deg2rad(0.1);  % per-sample measurement noise
+% ^ рад/с - случайный шум измерения гироскопа на каждом отсчёте
 end
