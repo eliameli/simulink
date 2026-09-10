@@ -254,56 +254,7 @@ end
 if ~isfolder(mdl_dir)                     % такой папки ещё нет?
     mkdir(mdl_dir);                        % создаём её
 end
-
-% save_system() overwrites an existing file by renaming it to a ".bak"
-% file first, then writing the new one - on Windows that rename can fail
-% with "Access denied" if something else still has the old .slx open
-% (a leftover MATLAB/Simulink handle from a previous run, antivirus, or
-% a cloud-sync folder like OneDrive/Google Drive re-scanning it - the
-% latter is common if the project lives under a synced folder such as
-% Documents/Videos/Desktop). Deleting the old file ourselves first avoids
-% that rename step, and retrying with a short pause rides out the more
-% common transient case (the previous run's file handle hasn't been
-% released yet).
-% Русское резюме: save_system() при перезаписи сначала переименовывает
-% старый файл в ".bak", а это переименование на Windows иногда падает с
-% "Access denied", если файл всё ещё чем-то занят (антивирус, облачная
-% синхронизация папки - OneDrive и т.п., или не до конца закрывшийся
-% предыдущий запуск). Удаляем старый файл сами (тогда переименовывать
-% нечего) и пробуем сохранить несколько раз с небольшой паузой.
-if isfile(mdl_path)                 % модель уже сохранялась сюда раньше?
-    try
-        delete(mdl_path);            % удаляем старый файл - тогда save_system нечего переименовывать
-    catch
-        % не получилось удалить - ничего страшного, ниже всё равно попробуем сохранить с повторами
-    end
-end
-
-max_attempts = 5;    % сколько раз пробовать сохранить, прежде чем сдаться
-saved = false;        % пока не сохранили
-last_err = [];        % последняя ошибка (для сообщения, если так и не получится)
-for attempt = 1:max_attempts             % пробуем сохранить несколько раз
-    try
-        save_system(mdl, mdl_path);       % сохраняем собранную модель в файл .slx
-        saved = true;                      % получилось - выходим из цикла
-        break
-    catch ME
-        last_err = ME;                     % запоминаем ошибку
-        pause(0.5);                        % небольшая пауза - вдруг файл как раз сейчас освобождается
-    end
-end
-if ~saved   % так и не удалось сохранить после всех попыток?
-    error('build_model:saveFailed', ...
-        ['Could not save %s after %d attempts (%s).\nThis is almost always ' ...
-         'Windows file locking, not a bug in the model itself - likely causes: ' ...
-         'the model is still open in another Simulink window, antivirus is ' ...
-         'scanning the file, or the project folder is inside a cloud-synced ' ...
-         'folder (OneDrive/Google Drive/Dropbox - Documents/Videos/Desktop are ' ...
-         'often auto-synced on Windows). Close any other Simulink window for this ' ...
-         'model and try again; if it keeps happening, move the project to a ' ...
-         'plain local folder (e.g. C:\\dev\\simulink) outside of any synced folder.'], ...
-        mdl_path, max_attempts, last_err.message);
-end
+save_system(mdl, mdl_path);   % сохраняем собранную модель в файл .slx
 end
 
 % =========================================================================
