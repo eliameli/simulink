@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Сборщик датчиков БИНС</title>
+<style>
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    background: #1b1d22;
+    color: #e8e8ec;
+    font-family: "Segoe UI", Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 10px 0;
+    text-align: center;
+  }
+  .layout {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 900px;
+  }
+  #gameCanvas {
+    background: #2e7d32;
+    border: 2px solid #444;
+    border-radius: 4px;
+    touch-action: none;
+  }
+  .sidebar {
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel {
+    background: #24262c;
+    border: 1px solid #3a3d45;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    margin: 0 0 8px 0;
+    color: #9fd3ff;
+  }
+  #sensorList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+  }
+  #sensorList li {
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #aaa;
+  }
+  #sensorList li.collected {
+    color: #7CFC7C;
+    text-decoration: line-through;
+  }
+  .badge {
+    display: inline-block;
+    width: 16px;
+    text-align: center;
+  }
+  #progressText {
+    font-size: 13px;
+    margin-top: 8px;
+    color: #ddd;
+  }
+  .statLine {
+    font-size: 12px;
+    color: #bbb;
+    margin: 2px 0;
+  }
+  button {
+    background: #3a6ea5;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:hover { background: #4a80bb; }
+  button.secondary { background: #555a63; }
+  button.secondary:hover { background: #676d78; }
+  .controlsHelp {
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+  }
+  /* Всплывающая подсказка при сборе датчика */
+  #pickupToast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2b1f;
+    border: 1px solid #4caf50;
+    border-radius: 8px;
+    padding: 12px 18px;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 10;
+  }
+  #pickupToast.show { opacity: 1; }
+  #pickupToast b { color: #9fe89f; }
+  #pickupToast p { margin: 6px 0 0 0; font-size: 13px; color: #ddd; }
+
+  /* Экран победы */
+  #winOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 15, 0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  #winOverlay.show { display: flex; }
+  .winBox {
+    background: #24262c;
+    border: 1px solid #4caf50;
+    border-radius: 10px;
+    padding: 24px 28px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .winBox h2 { color: #9fe89f; margin-top: 0; }
+  .winSensor {
+    text-align: left;
+    background: #1b1d22;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 10px 0;
+  }
+  .winSensor b { color: #9fd3ff; }
+  .winSensor p { margin: 4px 0 0 0; font-size: 13px; color: #ccc; }
+  .winButtons {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Сборщик датчиков БИНС — обучающая 2D-игра</h1>
+
+<div class="layout">
+  <canvas id="gameCanvas" width="600" height="600"></canvas>
+
+  <div class="sidebar">
+    <div class="panel">
+      <h2>Датчики (комплект IMU)</h2>
+      <ul id="sensorList"></ul>
+      <div id="progressText">Собрано 0 из 0</div>
+    </div>
+
+    <div class="panel">
+      <h2>Телеметрия</h2>
+      <div class="statLine" id="statTime">t = 0.00 с</div>
+      <div class="statLine" id="statSpeed">v = 0.00 м/с</div>
+      <div class="statLine" id="statHeading">курс = 0.0°</div>
+      <div class="statLine" id="statLog">записей в логе: 0</div>
+    </div>
+
+    <div class="panel">
+      <h2>Управление</h2>
+      <div class="controlsHelp">
+        Газ / тормоз: ↑ / ↓ или W / S<br>
+        Поворот: ← / → или A / D
+      </div>
+    </div>
+
+    <div class="panel">
+      <button id="downloadBtn">Скачать CSV (траектория)</button>
+    </div>
+  </div>
+</div>
+
+<div id="pickupToast">
+  <b id="toastTitle"></b>
+  <p id="toastDesc"></p>
+</div>
+
+<div id="winOverlay">
+  <div class="winBox">
+    <h2>Комплект IMU собран!</h2>
+    <p>Машинка объехала карту и собрала все датчики, нужные для БИНС:</p>
+    <div id="winSensorList"></div>
+    <div class="winButtons">
+      <button id="winDownloadBtn">Скачать CSV</button>
+      <button id="winRestartBtn" class="secondary">Играть заново</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   КОНСТАНТЫ МИРА И МАСШТАБА
+   Игровые координаты (x, y) всегда в метрах, в системе карты
+   0..MAP_SIZE. Пиксели канваса — производная величина только
+   для отрисовки, в лог и CSV они не попадают.
+   ============================================================ */
+const MAP_SIZE = 100;        // размер карты, метры (100 x 100 м)
+const SCALE = 6;              // пикселей на метр (канвас 600x600)
+const CANVAS_SIZE = MAP_SIZE * SCALE;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+/* ============================================================
+   ФИЗИКА МАШИНКИ — unicycle-модель
+   Состояние: x, y (м), psi (рад, мат. соглашение: 0 = вдоль +X,
+   рост угла = против часовой стрелки), v (м/с, продольная скорость).
+   Управление: a — продольное ускорение (газ/тормоз),
+               w — угловая скорость курса (руль, yaw rate).
+   Обновление на каждом фиксированном шаге dt:
+     v   += a * dt
+     psi += w * dt
+     x   += v * cos(psi) * dt
+     y   += v * sin(psi) * dt
+   Бокового скольжения нет — простая аркадная модель.
+   ============================================================ */
+const DT = 0.02; // с — фиксированный шаг физики (50 Гц), 0.01..0.02 по ТЗ
+
+// Параметры динамики (подобраны для приятного управления)
+const ACCEL = 6.0;     // м/с^2 — ускорение при газе
+const BRAKE = 8.0;     // м/с^2 — торможение/разгон назад
+const FRICTION = 2.5;  // м/с^2 — естественное торможение накатом без нажатых клавиш
+const V_MAX = 15.0;    // м/с — максимальная скорость вперёд
+const V_MIN = -5.0;    // м/с — максимальная скорость назад (задний ход)
+const W_MAX = 1.8;     // рад/с — максимальная угловая скорость поворота
+const STEER_SMOOTH = 7.0; // 1/с — скорость подведения w к целевому значению (имитация инерции руля)
+
+const car = {
+  x: 50, y: 15,   // старт машинки, метры
+  psi: Math.PI / 2, // курс — направлена "вверх" по карте (против часовой стрелки от +X)
+  v: 0,
+  w: 0,
+  length: 4.2,    // м, для отрисовки
+  width: 2.0      // м, для отрисовки
+};
+
+let simTime = 0; // время от старта игры, секунды — растёт только с шагами физики
+
+// Состояние нажатых клавиш
+const keys = { accel: false, brake: false, left: false, right: false };
+
+/* ============================================================
+   ЛОГ ТРАЕКТОРИИ — пишется с самого старта игры, каждый шаг dt
+   Поля строки: t, x, y, psi, v, a, w — ровно то, что нужно
+   для truth/generate_trajectory.m в MATLAB-пайплайне.
+   ============================================================ */
+const trajectoryLog = [];
+
+function wrapToPi(angle) {
+  // Разворачивает угол в диапазон (-pi, pi] — используется для psi,
+  // чтобы значение курса не росло бесконечно и было удобно читать/строить.
+  let a = angle % (2 * Math.PI);
+  if (a > Math.PI) a -= 2 * Math.PI;
+  if (a <= -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+function physicsStep(dt) {
+  // 1) Продольное ускорение a — из газа/тормоза, либо трение накатом
+  let a;
+  if (keys.accel) {
+    a = ACCEL;
+  } else if (keys.brake) {
+    a = -BRAKE;
+  } else if (car.v > 0) {
+    a = -Math.min(FRICTION, car.v / dt); // гасим скорость, но не проскакиваем через 0
+  } else if (car.v < 0) {
+    a = Math.min(FRICTION, -car.v / dt);
+  } else {
+    a = 0;
+  }
+
+  // 2) Целевая угловая скорость w — из руля (мат. соглашение: влево = против часовой = +w)
+  let wTarget = 0;
+  if (keys.left) wTarget += W_MAX;
+  if (keys.right) wTarget -= W_MAX;
+  // плавно подводим текущий w к целевому (небольшая инерция руля, без рывков в логе)
+  car.w += (wTarget - car.w) * Math.min(1, STEER_SMOOTH * dt);
+
+  // 3) Обновляем скорость v по ускорению a, с ограничением по диапазону
+  const vPrev = car.v;
+  car.v += a * dt;
+  car.v = Math.max(V_MIN, Math.min(V_MAX, car.v));
+  // фактическое a пересчитываем по факту изменения v (учитывает ограничение диапазона)
+  const aActual = (car.v - vPrev) / dt;
+
+  // 4) Обновляем курс psi по угловой скорости w
+  car.psi = wrapToPi(car.psi + car.w * dt);
+
+  // 5) Обновляем позицию по текущим v и psi
+  car.x += car.v * Math.cos(car.psi) * dt;
+  car.y += car.v * Math.sin(car.psi) * dt;
+
+  // 6) Не даём машинке уехать за пределы карты
+  car.x = Math.max(0, Math.min(MAP_SIZE, car.x));
+  car.y = Math.max(0, Math.min(MAP_SIZE, car.y));
+
+  // 7) Время и запись строки лога — фиксированный шаг с самого старта игры
+  simTime += dt;
+  trajectoryLog.push({ t: simTime, x: car.x, y: car.y, psi: car.psi, v: car.v, a: aActual, w: car.w });
+}
+
+/* ============================================================
+   КАРТА — простая сетка дорог 100x100 м
+   ============================================================ */
+const ROAD_WIDTH = 6; // м
+const ROAD_LINES = [10, 30, 50, 70, 90]; // координаты улиц (и вертикальных, и горизонтальных)
+
+/* ============================================================
+   ДАТЧИКИ ДЛЯ СБОРА — базовый комплект IMU для БИНС
+   Больше двух датчиков не добавляем по ТЗ (без GPS/барометра/магнитометра).
+   ============================================================ */
+const SENSORS = [
+  {
+    id: 'accel',
+    name: 'Трёхосный акселерометр',
+    short: 'АКСЕЛ',
+    x: 30, y: 70,
+    color: '#ffb74d',
+    collected: false,
+    desc: 'Измеряет линейные ускорения по осям X, Y, Z — в БИНС по ним двойным интегрированием считают скорость и положение.'
+  },
+  {
+    id: 'gyro',
+    name: 'Трёхосный гироскоп',
+    short: 'ГИРО',
+    x: 75, y: 30,
+    color: '#64b5f6',
+    collected: false,
+    desc: 'Измеряет угловые скорости вращения по осям X, Y, Z — в БИНС по ним отслеживают изменение ориентации (курс, крен, тангаж).'
+  }
+];
+const COLLECT_RADIUS = 3.5; // м — расстояние до иконки, при котором датчик считается собранным
+
+let gameWon = false;
+
+/* ============================================================
+   ОТРИСОВКА
+   Мировые координаты (метры, ось Y вверх) переводятся в пиксели
+   канваса (ось Y вниз) ТОЛЬКО здесь — в логике и логе всегда
+   хранится чистое математическое соглашение.
+   ============================================================ */
+function worldToCanvas(xm, ym) {
+  return { cx: xm * SCALE, cy: CANVAS_SIZE - ym * SCALE };
+}
+
+function drawMap() {
+  // Трава — фон
+  ctx.fillStyle = '#2e7d32';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  ctx.fillStyle = '#4a4d55';
+  // Горизонтальные дороги
+  for (const gy of ROAD_LINES) {
+    const { cy } = worldToCanvas(0, gy);
+    ctx.fillRect(0, cy - (ROAD_WIDTH * SCALE) / 2, CANVAS_SIZE, ROAD_WIDTH * SCALE);
+  }
+  // Вертикальные дороги
+  for (const gx of ROAD_LINES) {
+    const { cx } = worldToCanvas(gx, 0);
+    ctx.fillRect(cx - (ROAD_WIDTH * SCALE) / 2, 0, ROAD_WIDTH * SCALE, CANVAS_SIZE);
+  }
+
+  // Разметка перекрёстков (просто светлее пятно) — чисто декоративно
+  ctx.fillStyle = '#5a5d66';
+  for (const gx of ROAD_LINES) {
+    for (const gy of ROAD_LINES) {
+      const { cx, cy } = worldToCanvas(gx, gy);
+      ctx.fillRect(cx - (ROAD_WIDTH * SCALE) / 2, cy - (ROAD_WIDTH * SCALE) / 2, ROAD_WIDTH * SCALE, ROAD_WIDTH * SCALE);
+    }
+  }
+}
+
+function drawSensors() {
+  for (const s of SENSORS) {
+    if (s.collected) continue;
+    const { cx, cy } = worldToCanvas(s.x, s.y);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#111';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(s.short, cx, cy);
+  }
+}
+
+function drawCar() {
+  const { cx, cy } = worldToCanvas(car.x, car.y);
+  // Из-за инверсии оси Y на канвасе угол поворота в пикселях — это -psi
+  const canvasAngle = -car.psi;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(canvasAngle);
+
+  const L = car.length * SCALE;
+  const W = car.width * SCALE;
+
+  // Корпус машинки (прямоугольник), локальная ось +X — направление движения
+  ctx.fillStyle = '#e53935';
+  ctx.fillRect(-L / 2, -W / 2, L, W);
+  ctx.strokeStyle = '#7a1f1c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-L / 2, -W / 2, L, W);
+
+  // Треугольник-стрелка на носу — показывает направление курса
+  ctx.beginPath();
+  ctx.moveTo(L / 2, 0);
+  ctx.lineTo(L / 2 - 8, -W / 2);
+  ctx.lineTo(L / 2 - 8, W / 2);
+  ctx.closePath();
+  ctx.fillStyle = '#ffe082';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function render() {
+  drawMap();
+  drawSensors();
+  drawCar();
+}
+
+/* ============================================================
+   HUD, ПОДСКАЗКИ, ЭКРАН ПОБЕДЫ
+   ============================================================ */
+const sensorListEl = document.getElementById('sensorList');
+const progressTextEl = document.getElementById('progressText');
+
+function renderHud() {
+  sensorListEl.innerHTML = '';
+  let collectedCount = 0;
+  for (const s of SENSORS) {
+    const li = document.createElement('li');
+    if (s.collected) { li.classList.add('collected'); collectedCount++; }
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = s.collected ? '✓' : '○';
+    li.appendChild(badge);
+    li.appendChild(document.createTextNode(s.name));
+    sensorListEl.appendChild(li);
+  }
+  progressTextEl.textContent = `Собрано ${collectedCount} из ${SENSORS.length}`;
+
+  document.getElementById('statTime').textContent = `t = ${simTime.toFixed(2)} с`;
+  document.getElementById('statSpeed').textContent = `v = ${car.v.toFixed(2)} м/с`;
+  document.getElementById('statHeading').textContent = `курс = ${(car.psi * 180 / Math.PI).toFixed(1)}°`;
+  document.getElementById('statLog').textContent = `записей в логе: ${trajectoryLog.length}`;
+}
+
+const toastEl = document.getElementById('pickupToast');
+const toastTitleEl = document.getElementById('toastTitle');
+const toastDescEl = document.getElementById('toastDesc');
+let toastTimer = null;
+
+function showPickupToast(sensor) {
+  toastTitleEl.textContent = sensor.name;
+  toastDescEl.textContent = sensor.desc;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3500);
+}
+
+function checkCollisions() {
+  if (gameWon) return;
+  for (const s of SENSORS) {
+    if (s.collected) continue;
+    const dx = car.x - s.x;
+    const dy = car.y - s.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= COLLECT_RADIUS) {
+      s.collected = true;
+      showPickupToast(s);
+      renderHud();
+    }
+  }
+  if (SENSORS.every(s => s.collected)) {
+    gameWon = true;
+    showWinScreen();
+  }
+}
+
+const winOverlay = document.getElementById('winOverlay');
+const winSensorListEl = document.getElementById('winSensorList');
+
+function showWinScreen() {
+  winSensorListEl.innerHTML = '';
+  for (const s of SENSORS) {
+    const div = document.createElement('div');
+    div.className = 'winSensor';
+    div.innerHTML = `<b>${s.name}</b><p>${s.desc}</p>`;
+    winSensorListEl.appendChild(div);
+  }
+  winOverlay.classList.add('show');
+}
+
+document.getElementById('winRestartBtn').addEventListener('click', () => {
+  // Полный сброс — новая машинка, новые датчики, новый лог (новый "прогон")
+  car.x = 50; car.y = 15; car.psi = Math.PI / 2; car.v = 0; car.w = 0;
+  simTime = 0;
+  trajectoryLog.length = 0;
+  for (const s of SENSORS) s.collected = false;
+  gameWon = false;
+  winOverlay.classList.remove('show');
+  renderHud();
+});
+
+/* ============================================================
+   ЭКСПОРТ CSV — доступен в любой момент игры, не только после победы
+   ============================================================ */
+function downloadCsv() {
+  const lines = ['t,x,y,psi,v,a,w'];
+  for (const row of trajectoryLog) {
+    lines.push([
+      row.t.toFixed(2),
+      row.x.toFixed(2),
+      row.y.toFixed(2),
+      row.psi.toFixed(4),
+      row.v.toFixed(2),
+      row.a.toFixed(2),
+      row.w.toFixed(4)
+    ].join(','));
+  }
+  const csvText = lines.join('\n') + '\n';
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `game_run_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('downloadBtn').addEventListener('click', downloadCsv);
+document.getElementById('winDownloadBtn').addEventListener('click', downloadCsv);
+
+/* ============================================================
+   УПРАВЛЕНИЕ С КЛАВИАТУРЫ
+   ============================================================ */
+const KEY_MAP = {
+  ArrowUp: 'accel', KeyW: 'accel',
+  ArrowDown: 'brake', KeyS: 'brake',
+  ArrowLeft: 'left', KeyA: 'left',
+  ArrowRight: 'right', KeyD: 'right'
+};
+
+window.addEventListener('keydown', (e) => {
+  const action = KEY_MAP[e.code];
+  if (action) {
+    keys[action] = true;
+    e.preventDefault(); // не даём стрелкам скроллить страницу
+  }
+});
+window.addEventListener('keyup', (e) => {
+  const action = KEY_MAP[e.code];
+  if (action) {
+    keys[action] = false;
+    e.preventDefault();
+  }
+});
+
+/* ============================================================
+   ИГРОВОЙ ЦИКЛ С ФИКСИРОВАННЫМ ШАГОМ ФИЗИКИ
+   requestAnimationFrame используется только для тайминга рендера;
+   накопитель (accumulator) гарантирует, что физика и лог всегда
+   шагают ровно на DT, независимо от текущего FPS.
+   ============================================================ */
+let lastTimestamp = performance.now();
+let accumulator = 0;
+const MAX_FRAME_TIME = 0.25; // с — защита от "спирали смерти" при разворачивании вкладки
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  let frameTime = (now - lastTimestamp) / 1000;
+  lastTimestamp = now;
+  frameTime = Math.min(frameTime, MAX_FRAME_TIME);
+  accumulator += frameTime;
+
+  while (accumulator >= DT) {
+    if (!gameWon) {
+      physicsStep(DT);
+      checkCollisions();
+    }
+    accumulator -= DT;
+  }
+
+  render();
+  renderHud();
+}
+
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
