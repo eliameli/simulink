@@ -34,7 +34,7 @@ map = generate_map_3x3();   % строим карту 3x3, ту же, что о�
 %% 2) Ground-truth trajectory: load it from a recorded CSV
 % Point this at your own file if it's not the example one committed to
 % data/ - see truth/load_trajectory_from_csv.m for the required columns.
-csv_path = fullfile(here, '..', 'data', 'game_run_20260910T081331784Z.csv');
+csv_path = fullfile(here, '..', 'data', 'game_run_20260910T083439851Z.csv');
 % ^ путь к CSV-файлу с траекторией - поменяйте на свой при необходимости
 truth = load_trajectory_from_csv(csv_path);   % загружаем эталонную траекторию из CSV вместо рисования мышью
 dt = truth.dt;   % шаг времени - берём из самого файла (а не задаём вручную, как для маршрута мышью)
