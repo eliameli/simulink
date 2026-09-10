@@ -28,7 +28,7 @@
     gap: 16px;
     flex-wrap: wrap;
     justify-content: center;
-    max-width: 900px;
+    max-width: 1100px;
   }
   #gameCanvas {
     background: #2e7d32;
@@ -166,7 +166,7 @@
 <h1>Сборщик датчиков БИНС — обучающая 2D-игра</h1>
 
 <div class="layout">
-  <canvas id="gameCanvas" width="600" height="600"></canvas>
+  <canvas id="gameCanvas" width="800" height="800"></canvas>
 
   <div class="sidebar">
     <div class="panel">
@@ -221,8 +221,8 @@
    0..MAP_SIZE. Пиксели канваса — производная величина только
    для отрисовки, в лог и CSV они не попадают.
    ============================================================ */
-const MAP_SIZE = 100;        // размер карты, метры (100 x 100 м)
-const SCALE = 6;              // пикселей на метр (канвас 600x600)
+const MAP_SIZE = 200;        // размер карты, метры (0..200 по каждой оси)
+const SCALE = 4;              // пикселей на метр (канвас 800x800)
 const CANVAS_SIZE = MAP_SIZE * SCALE;
 
 const canvas = document.getElementById('gameCanvas');
@@ -253,8 +253,8 @@ const W_MAX = 1.8;     // рад/с — максимальная угловая 
 const STEER_SMOOTH = 7.0; // 1/с — скорость подведения w к целевому значению (имитация инерции руля)
 
 const car = {
-  x: 50, y: 15,   // старт машинки, метры
-  psi: Math.PI / 2, // курс — направлена "вверх" по карте (против часовой стрелки от +X)
+  x: 100, y: 100,  // старт машинки, метры — узел 5 (центр сетки)
+  psi: 0,          // курс — вдоль +X (мат. соглашение, курс растёт против часовой стрелки)
   v: 0,
   w: 0,
   length: 4.2,    // м, для отрисовки
@@ -328,10 +328,30 @@ function physicsStep(dt) {
 }
 
 /* ============================================================
-   КАРТА — простая сетка дорог 100x100 м
+   КАРТА — сетка 3x3 перекрёстка, шаг 100 м, начало координат в узле 1.
+   Координаты узлов — в метрах, мат. соглашение (x вправо, y вверх).
    ============================================================ */
 const ROAD_WIDTH = 6; // м
-const ROAD_LINES = [10, 30, 50, 70, 90]; // координаты улиц (и вертикальных, и горизонтальных)
+
+// Узлы (перекрёстки): номер -> [x, y] в метрах
+const NODES = {
+  1: [0, 0],     2: [0, 100],   3: [0, 200],
+  4: [100, 0],   5: [100, 100], 6: [100, 200],
+  7: [200, 0],   8: [200, 100], 9: [200, 200]
+};
+
+// Дороги — пары номеров узлов, включая диагональ 1-9 напрямую через всю карту
+const EDGES = [
+  [1, 2], [1, 4],
+  [2, 3], [2, 5],
+  [3, 6],
+  [4, 5], [4, 7],
+  [5, 6], [5, 8],
+  [6, 9],
+  [7, 8],
+  [8, 9],
+  [1, 9] // диагональ, не через центр
+];
 
 /* ============================================================
    ДАТЧИКИ ДЛЯ СБОРА — базовый комплект IMU для БИНС
@@ -342,7 +362,7 @@ const SENSORS = [
     id: 'accel',
     name: 'Трёхосный акселерометр',
     short: 'АКСЕЛ',
-    x: 30, y: 70,
+    x: 100, y: 50, // на дороге 4-5
     color: '#ffb74d',
     collected: false,
     desc: 'Измеряет линейные ускорения по осям X, Y, Z — в БИНС по ним двойным интегрированием считают скорость и положение.'
@@ -351,7 +371,7 @@ const SENSORS = [
     id: 'gyro',
     name: 'Трёхосный гироскоп',
     short: 'ГИРО',
-    x: 75, y: 30,
+    x: 150, y: 150, // на диагонали 1-9
     color: '#64b5f6',
     collected: false,
     desc: 'Измеряет угловые скорости вращения по осям X, Y, Z — в БИНС по ним отслеживают изменение ориентации (курс, крен, тангаж).'
@@ -376,25 +396,26 @@ function drawMap() {
   ctx.fillStyle = '#2e7d32';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  ctx.fillStyle = '#4a4d55';
-  // Горизонтальные дороги
-  for (const gy of ROAD_LINES) {
-    const { cy } = worldToCanvas(0, gy);
-    ctx.fillRect(0, cy - (ROAD_WIDTH * SCALE) / 2, CANVAS_SIZE, ROAD_WIDTH * SCALE);
-  }
-  // Вертикальные дороги
-  for (const gx of ROAD_LINES) {
-    const { cx } = worldToCanvas(gx, 0);
-    ctx.fillRect(cx - (ROAD_WIDTH * SCALE) / 2, 0, ROAD_WIDTH * SCALE, CANVAS_SIZE);
+  // Дороги — отрезки между узлами графа (включая диагональ 1-9)
+  ctx.strokeStyle = '#4a4d55';
+  ctx.lineWidth = ROAD_WIDTH * SCALE;
+  ctx.lineCap = 'round';
+  for (const [a, b] of EDGES) {
+    const p1 = worldToCanvas(...NODES[a]);
+    const p2 = worldToCanvas(...NODES[b]);
+    ctx.beginPath();
+    ctx.moveTo(p1.cx, p1.cy);
+    ctx.lineTo(p2.cx, p2.cy);
+    ctx.stroke();
   }
 
-  // Разметка перекрёстков (просто светлее пятно) — чисто декоративно
-  ctx.fillStyle = '#5a5d66';
-  for (const gx of ROAD_LINES) {
-    for (const gy of ROAD_LINES) {
-      const { cx, cy } = worldToCanvas(gx, gy);
-      ctx.fillRect(cx - (ROAD_WIDTH * SCALE) / 2, cy - (ROAD_WIDTH * SCALE) / 2, ROAD_WIDTH * SCALE, ROAD_WIDTH * SCALE);
-    }
+  // Сглаживаем перекрёстки кружками того же цвета — убирает "заломы" на стыках дорог
+  ctx.fillStyle = '#4a4d55';
+  for (const id in NODES) {
+    const { cx, cy } = worldToCanvas(...NODES[id]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, (ROAD_WIDTH * SCALE) / 2, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -529,7 +550,7 @@ function showWinScreen() {
 
 document.getElementById('winRestartBtn').addEventListener('click', () => {
   // Полный сброс — новая машинка, новые датчики, новый лог (новый "прогон")
-  car.x = 50; car.y = 15; car.psi = Math.PI / 2; car.v = 0; car.w = 0;
+  car.x = 100; car.y = 100; car.psi = 0; car.v = 0; car.w = 0;
   simTime = 0;
   trajectoryLog.length = 0;
   for (const s of SENSORS) s.collected = false;
