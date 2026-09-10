@@ -10,32 +10,49 @@ function [xm, ym, edge_idx, mismatch] = map_matching(x, y, nodes, edges)
 %
 % v0 map-matching strategy: project the dead-reckoned estimate (x,y)
 % onto every road segment in the map (nodes/edges graph) and snap to
-% whichever segment is closest - BUT stick to the currently matched
-% road unless a different one is closer by more than MARGIN. Without
-% this, near an intersection two roads can be almost equally close, so
-% the match flips between them from one sample to the next, and the
-% plotted path visibly cuts a diagonal shortcut through the
-% intersection instead of following one road to the corner and turning.
-% This still has no real path-continuity constraint (a full version
-% would be a Hidden Markov Model over the road graph, see README.md),
-% just enough memory to stop flip-flopping between two close roads.
+% whichever segment is closest - BUT (1) stick to the currently matched
+% road unless a different one is closer by more than MARGIN, and (2)
+% only ever switch to a road that actually touches the current one (or,
+% if the estimate has drifted far enough that even the roads touching
+% the current one are all farther than LOST_THRESHOLD, fall back to
+% searching the whole map again, so a bad state can't get stuck forever).
+%
+% (1) alone (no adjacency restriction) is what an earlier version of
+% this did. Verified against a real dead-reckoning run (see
+% sim/blocks/ins_mechanization_block.m for how that's generated) in a
+% standalone Python re-implementation before writing this: whenever the
+% estimate happened to be briefly closer to some unrelated, disconnected
+% road than to anything actually reachable from the current one - e.g.
+% the diagonal avenue and a horizontal street that don't meet anywhere
+% near that point - the old logic would snap straight to it, and the
+% plotted path visibly cut a shortcut through open space between two
+% roads that don't even intersect there. Restricting candidates to
+% roads that share a node with the current one (falling back to a full
+% search only when truly "lost") keeps the plotted path always
+% following an actual connected sequence of roads instead.
 %
 % Русское резюме: на каждом шаге проецируем оценённую позицию (x,y) на
-% все дороги карты и берём ближайшую - но не переключаемся с уже
-% выбранной дороги, пока другая не окажется ближе с заметным запасом
-% (MARGIN). Без этого запаса у перекрёстка, где две дороги почти
-% одинаково близко, выбор "дёргался" бы каждый шаг, и на графике линия
-% срезала бы перекрёсток по диагонали вместо поворота по дороге.
+% все дороги карты, но НЕ выбираем просто самую близкую дорогу - только
+% среди текущей дороги и тех, что физически соединены с ней через общий
+% узел (плюс гистерезис - запас MARGIN, чтобы не дёргаться между двумя
+% соседними). Если даже соединённые дороги все дальше LOST_THRESHOLD
+% (оценка сильно "скакнула"), ищем заново по всей карте - иначе синяя
+% линия могла бы навсегда застрять на устаревшей дороге. Без этого
+% ограничения (проверено на реальной записи через Python) линия иногда
+% перескакивала на близкую, но НЕ связанную с текущей дорогу - и на
+% графике это выглядело как диагональный срез через газон между двумя
+% дорогами, которые в этом месте вообще не пересекаются.
 
-persistent cur_edge      % номер дороги, выбранной на прошлом шаге (для гистерезиса)
+persistent cur_edge      % номер дороги, выбранной на прошлом шаге (для гистерезиса и проверки связности)
 if isempty(cur_edge)      % это первый вызов блока за весь прогон?
     cur_edge = 0;          % ещё ни одна дорога не выбрана
 end
 
-margin = 3; % m - how much closer another road must be before switching
-% ^ м - насколько другая дорога должна быть ближе, чтобы мы на неё переключились
+margin = 3;          % м - насколько другая дорога должна быть ближе, чтобы мы на неё переключились
+lost_threshold = 40; % м - если даже дороги, соединённые с текущей, дальше этого - считаем, что "потеряли" дорогу
 n_edges = size(edges, 1); % сколько всего дорог на карте
 
+% -- ближайшая дорога по ВСЕЙ карте (нужна всегда: на первом вызове и как запасной вариант, если "потерялись") --
 best_dist = inf; best_x = x; best_y = y; best_edge = 0; % пока лучшего варианта нет
 for e = 1:n_edges                                        % перебираем все дороги
     [px, py, d] = project_to_segment(x, y, nodes(edges(e,1),:), nodes(edges(e,2),:)); % проекция точки на эту дорогу
@@ -44,15 +61,40 @@ for e = 1:n_edges                                        % перебираем 
     end
 end
 
-if cur_edge ~= 0                        % на прошлом шаге уже была выбрана какая-то дорога?
-    [cx, cy, cd] = project_to_segment(x, y, nodes(edges(cur_edge,1),:), nodes(edges(cur_edge,2),:)); % проекция на ту же дорогу сейчас
-    if cd <= best_dist + margin          % она всё ещё не сильно хуже самой близкой (в пределах запаса)?
-        best_edge = cur_edge; best_x = cx; best_y = cy; best_dist = cd; % тогда остаёмся на ней (не переключаемся)
+if cur_edge == 0                         % это самый первый вызов (ещё нет "текущей" дороги)?
+    chosen_edge = best_edge; chosen_x = best_x; chosen_y = best_y; chosen_dist = best_dist; % берём глобально ближайшую
+else
+    % -- ищем лучшую дорогу только среди текущей и тех, что с ней соединены (через общий узел) --
+    a1 = edges(cur_edge, 1); a2 = edges(cur_edge, 2); % два узла текущей дороги
+    local_best_dist = inf; local_best_x = x; local_best_y = y; local_best_edge = 0; % пока лучшего локального варианта нет
+    for e = 1:n_edges                                        % перебираем все дороги ещё раз
+        is_adjacent = (e == cur_edge) || edges(e,1) == a1 || edges(e,1) == a2 || ...
+            edges(e,2) == a1 || edges(e,2) == a2; % это текущая дорога, или у неё есть общий узел с текущей?
+        if ~is_adjacent                                       % не связана с текущей дорогой?
+            continue                                            % пропускаем - её нельзя выбрать напрямую
+        end
+        [px, py, d] = project_to_segment(x, y, nodes(edges(e,1),:), nodes(edges(e,2),:)); % проекция на эту (связанную) дорогу
+        if d < local_best_dist                                % это расстояние - новый рекорд среди связанных дорог?
+            local_best_dist = d; local_best_x = px; local_best_y = py; local_best_edge = e; % запоминаем
+        end
+    end
+
+    if local_best_dist <= lost_threshold   % связанная "окрестность" текущей дороги всё ещё не слишком далеко?
+        if local_best_edge ~= cur_edge       % лучшая связанная дорога - не та же, что была?
+            [cx, cy, cd] = project_to_segment(x, y, nodes(edges(cur_edge,1),:), nodes(edges(cur_edge,2),:)); % проекция на прежнюю дорогу
+            if cd <= local_best_dist + margin  % прежняя дорога всё ещё не сильно хуже (гистерезис)?
+                local_best_edge = cur_edge; local_best_x = cx; local_best_y = cy; local_best_dist = cd; % остаёмся на прежней
+            end
+        end
+        chosen_edge = local_best_edge; chosen_x = local_best_x; chosen_y = local_best_y; chosen_dist = local_best_dist;
+    else
+        % "потеряли" дорогу - оценка положения слишком далеко от всей связной окрестности прежней дороги
+        chosen_edge = best_edge; chosen_x = best_x; chosen_y = best_y; chosen_dist = best_dist; % ищем заново по всей карте
     end
 end
 
-cur_edge = best_edge;    % запоминаем выбор дороги для следующего шага (гистерезис)
-xm = best_x; ym = best_y; edge_idx = best_edge; mismatch = best_dist; % отдаём наружу: точку на дороге, номер дороги и расстояние до неё
+cur_edge = chosen_edge;    % запоминаем выбор дороги для следующего шага
+xm = chosen_x; ym = chosen_y; edge_idx = chosen_edge; mismatch = chosen_dist; % отдаём наружу: точку на дороге, номер дороги и расстояние до неё
 end
 
 function [px, py, d] = project_to_segment(x, y, a, b)
