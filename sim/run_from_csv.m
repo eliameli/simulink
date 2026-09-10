@@ -6,8 +6,14 @@
 % still there whenever you want it, just run run_v0 instead of this file.
 %
 % Expected CSV columns (header row required): t,x,y,psi,v,a,w - see
-% truth/load_trajectory_from_csv.m for the exact format, and
-% data/game_run_20260910T081331784Z.csv for a real example file.
+% truth/load_trajectory_from_csv.m for the exact format.
+%
+% Which file gets loaded: NOT a fixed filename. This script always picks
+% whichever .csv file has the newest modification time inside data/latest/
+% - so to test a new recording, just drop it into that folder (any
+% filename you like, no need to rename anything or edit this script) and
+% run this file again. Older example recordings stay in data/ itself,
+% untouched, for reference.
 %
 % Run this file directly in MATLAB R2024a (Run button, or F5, or type
 % "run_from_csv" with sim/ as the current folder).
@@ -16,6 +22,10 @@
 % траектория не рисуется мышью, а загружается из CSV-файла (например,
 % выгруженного из отдельно сделанной игры). run_v0.m при этом никак не
 % меняется - запуск с ручным вводом маршрута мышью остаётся как был.
+% Какой именно файл откроется: НЕ зависит от имени файла - скрипт всегда
+% берёт самый свежий по дате изменения .csv из папки data/latest/. Чтобы
+% проверить новую запись, просто киньте файл (с любым именем) в эту
+% папку и запустите скрипт заново - ничего в коде менять не нужно.
 
 close all; clear; clc;   % закрываем все окна графиков, чистим рабочее пространство и командное окно
 
@@ -31,11 +41,21 @@ addpath(fullfile(here, '..', 'truth'));     % добавляем truth/ в пу�
 % roads here instead of a map the game never saw.
 map = generate_map_3x3();   % строим карту 3x3, ту же, что описана для игры в map/MAP_3X3_INFO.md
 
-%% 2) Ground-truth trajectory: load it from a recorded CSV
-% Point this at your own file if it's not the example one committed to
-% data/ - see truth/load_trajectory_from_csv.m for the required columns.
-csv_path = fullfile(here, '..', 'data', 'game_run_20260910T083439851Z.csv');
-% ^ путь к CSV-файлу с траекторией - поменяйте на свой при необходимости
+%% 2) Ground-truth trajectory: load the newest CSV dropped into data/latest/
+% No filename to edit here - drop your exported .csv into data/latest/
+% (any name) and this always picks whichever one was modified most
+% recently. See truth/load_trajectory_from_csv.m for the required columns.
+% Русское резюме: имя файла нигде не задаём - просто кидаем свой .csv в
+% папку data/latest/ (с любым именем), скрипт сам берёт самый свежий.
+latest_dir = fullfile(here, '..', 'data', 'latest');   % папка, куда кидаете свои записи
+csv_files = dir(fullfile(latest_dir, '*.csv'));         % список всех .csv файлов в этой папке
+if isempty(csv_files)                                     % в папке вообще нет ни одного .csv файла?
+    error('run_from_csv:noCsvFound', ...
+        'No .csv files found in %s - drop your recorded trajectory there first.', latest_dir);
+end
+[~, newest_idx] = max([csv_files.datenum]);   % находим файл с самой поздней датой изменения
+csv_path = fullfile(csv_files(newest_idx).folder, csv_files(newest_idx).name); % полный путь к нему
+fprintf('Loading trajectory from: %s\n', csv_path);   % печатаем, какой именно файл загрузился (для наглядности)
 truth = load_trajectory_from_csv(csv_path);   % загружаем эталонную траекторию из CSV вместо рисования мышью
 dt = truth.dt;   % шаг времени - берём из самого файла (а не задаём вручную, как для маршрута мышью)
 
