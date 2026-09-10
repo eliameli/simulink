@@ -53,7 +53,30 @@ if bdIsLoaded(mdl)          % модель с таким именем уже з�
 end
 
 params = sensor_params();          % параметры модели ошибок датчика
-build_model(dt, params, mdl_path); % программно строим Simulink-модель заново, с шагом dt из CSV-файла
+
+% Real/game-recorded steering has near-constant small yaw-rate wobble
+% even while driving essentially straight (measured on an actual
+% recording: ~30% of samples exceeded the default 0.35 rad/s "turn"
+% threshold) - with run_v0.m's defaults (capture_radius=inf,
+% debounce_time=0.05) almost every one of those wobbles used to get
+% mistaken for a real turn and yank the estimate to whatever map node
+% was nearest, instead of the genuine corners. A longer debounce (the
+% rate has to stay past the threshold for longer to count) and a finite
+% capture radius (skip the correction instead of snapping to a distant,
+% almost certainly wrong node) both measurably help - verified in Python
+% against real recordings plus injected sensor noise before setting
+% these. See sim/blocks/ins_mechanization_block.m and sim/build_model.m
+% for the full explanation.
+% Русское резюме: у реальной записи из игры угол всё время немного
+% "дрожит", даже когда машина едет прямо - со старыми настройками
+% (radius=inf, debounce=0.05) это дрожание постоянно принималось за
+% настоящий поворот и дёргало оценку к ближайшему узлу. Здесь задаём
+% другие значения (конечный радиус захвата + больший debounce),
+% проверенные на реальных записях с добавленным шумом датчика.
+mech_params.capture_radius = 30;   % м - радиус захвата для магнита к перекрёстку
+mech_params.debounce_time  = 0.3;  % с - сколько нужно продержаться за порогом, чтобы поворот засчитался
+
+build_model(dt, params, mdl_path, mech_params); % программно строим Simulink-модель заново, с шагом dt из CSV-файла
 
 %% 4) Provide the model's inputs (it reads these base-workspace variables)
 a_true_ts = [truth.t, truth.a_true]; %#ok<NASGU> (used by the From Workspace block)

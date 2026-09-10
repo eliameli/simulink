@@ -1,4 +1,4 @@
-function mdl_path = build_model(dt, params, mdl_path)
+function mdl_path = build_model(dt, params, mdl_path, mech_params)
 %BUILD_MODEL Programmatically build the v0 Simulink model.
 %   MDL_PATH = BUILD_MODEL(DT, PARAMS, MDL_PATH) builds
 %   gps_free_nav_v0.slx: a synthetic IMU sensor model feeding an RK4
@@ -12,6 +12,25 @@ function mdl_path = build_model(dt, params, mdl_path)
 %            values are baked into the model at build time: if you
 %            change sensor_params.m, rebuild the model (delete the .slx
 %            or call build_model again) for the change to take effect.
+%   MECH_PARAMS - optional struct tuning the INS Mechanization block's
+%            corner-snap (see sim/blocks/ins_mechanization_block.m for
+%            why this needs to differ by data source):
+%              .capture_radius - max distance [m] to a map node for a
+%                                 turn-triggered correction to fire.
+%                                 Default: inf (run_v0.m's mouse-drawn
+%                                 routes need this - a correction must
+%                                 always find *some* node).
+%              .debounce_time  - how long [s] the yaw rate must stay
+%                                 past a threshold before a turn
+%                                 start/end counts. Default: 0.05.
+%            Omit this argument entirely to get both defaults (i.e.
+%            run_v0.m's original behavior, unchanged). run_from_csv.m
+%            passes capture_radius=30, debounce_time=0.3 instead - real
+%            recorded steering has near-constant small yaw-rate wobble
+%            that the short default debounce mistakes for real turns far
+%            more often than a hand-drawn route ever does (measured: ~30%
+%            of samples on an actual recording), and each false trigger
+%            used to snap the estimate to whatever node was nearest.
 %
 %   At simulation time (not build time) the caller must set these
 %   base-workspace variables before calling sim():
@@ -30,7 +49,21 @@ function mdl_path = build_model(dt, params, mdl_path)
 %
 % Русское резюме: этот файл программно (кодом, а не мышкой) строит всю
 % Simulink-модель - добавляет блоки и соединяет их проводами. Ниже
-% почти на каждой строке краткая подпись, что она делает.
+% почти на каждой строке краткая подпись, что она делает. MECH_PARAMS -
+% необязательный параметр (радиус захвата + время подтверждения поворота
+% для блока dead reckoning) - см. пояснение в
+% sim/blocks/ins_mechanization_block.m, почему это нужно задавать
+% по-разному для маршрута мышью и для записи из игры.
+
+if nargin < 4 || isempty(mech_params)      % значения не переданы - используем старые по умолчанию (маршрут мышью)
+    mech_params = struct();                 % пустая структура - поля ниже заполнятся значениями по умолчанию
+end
+if ~isfield(mech_params, 'capture_radius') || isempty(mech_params.capture_radius)
+    mech_params.capture_radius = inf;        % по умолчанию - без ограничения (как было изначально)
+end
+if ~isfield(mech_params, 'debounce_time') || isempty(mech_params.debounce_time)
+    mech_params.debounce_time = 0.05;        % по умолчанию - как было изначально
+end
 
 mdl = 'gps_free_nav_v0';   % имя модели (используется и как имя файла, и как имя системы в Simulink)
 
@@ -82,6 +115,22 @@ set_param([mdl '/psi0'], 'Value', 'ins_psi0', 'Position', pos(2, 3.5, 60, 30)); 
 add_block('simulink/Sources/Constant', [mdl '/v0']);    % константа - начальная скорость
 set_param([mdl '/v0'], 'Value', 'ins_v0', 'Position', pos(2, 3.9, 60, 30));   % берём значение из переменной ins_v0
 
+% Corner-snap tuning (capture_radius, debounce_time) - baked in as
+% literal numbers at build time (like Ts), not read from the base
+% workspace, since they're a fixed choice for the whole run rather than
+% something that changes with the route. See MECH_PARAMS above for why
+% run_v0.m and run_from_csv.m pass different values here.
+% Русское резюме: радиус захвата и время подтверждения поворота -
+% зашиваем числом при сборке (как Ts), а не читаем из workspace, они
+% одинаковы весь прогон. run_v0.m и run_from_csv.m передают сюда разные
+% значения (см. MECH_PARAMS выше).
+add_block('simulink/Sources/Constant', [mdl '/Capture Radius']);   % константа - радиус захвата для магнита к перекрёстку
+set_param([mdl '/Capture Radius'], 'Value', sprintf('%.10g', mech_params.capture_radius), ...
+    'Position', pos(2, 4.3, 60, 30));
+add_block('simulink/Sources/Constant', [mdl '/Debounce Time']);   % константа - время подтверждения поворота
+set_param([mdl '/Debounce Time'], 'Value', sprintf('%.10g', mech_params.debounce_time), ...
+    'Position', pos(2, 4.7, 60, 30));
+
 % ---- INS Mechanization (RK4) MATLAB Function block ---------------------
 mechPath = [mdl '/INS Mechanization (RK4)'];   % путь к блоку dead reckoning
 add_block('simulink/User-Defined Functions/MATLAB Function', mechPath);   % добавляем пустой блок "MATLAB Function"
@@ -105,6 +154,10 @@ add_line(mdl, 'x0/1', 'INS Mechanization (RK4)/4', 'autorouting', 'on');        
 add_line(mdl, 'y0/1', 'INS Mechanization (RK4)/5', 'autorouting', 'on');             % провод: начальный y -> вход 5
 add_line(mdl, 'psi0/1', 'INS Mechanization (RK4)/6', 'autorouting', 'on');           % провод: начальный курс -> вход 6
 add_line(mdl, 'v0/1', 'INS Mechanization (RK4)/7', 'autorouting', 'on');             % провод: начальная скорость -> вход 7
+% (входы 8, 9 - карта, подключаются ниже, после блоков Map Nodes/Map Edges)
+% (входы 10, 11 - радиус захвата и debounce - подключаются здесь, они уже готовы)
+add_line(mdl, 'Capture Radius/1', 'INS Mechanization (RK4)/10', 'autorouting', 'on'); % провод: радиус захвата -> вход 10
+add_line(mdl, 'Debounce Time/1', 'INS Mechanization (RK4)/11', 'autorouting', 'on');  % провод: время подтверждения поворота -> вход 11
 
 % ---- Map data constants -------------------------------------------------
 add_block('simulink/Sources/Constant', [mdl '/Map Nodes']);   % константа - список узлов карты

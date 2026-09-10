@@ -1,5 +1,42 @@
-function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0, nodes, edges)
+function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0, nodes, edges, capture_radius, debounce_time)
 %#codegen
+% CAPTURE_RADIUS and DEBOUNCE_TIME are wired in from outside (constants
+% baked in at build time by build_model.m) instead of being hardcoded
+% here, because the right value depends on where the (a,w) signal comes
+% from:
+%   - a hand-drawn route (run_v0.m) has a handful of clean, isolated
+%     turns and can otherwise drift more than 30 m between them, so it
+%     needs capture_radius = inf (a correction must always be able to
+%     find *some* node) and a short debounce_time is fine (there's no
+%     continuous steering wobble to filter out);
+%   - a real/game-recorded route (run_from_csv.m) has near-constant small
+%     yaw-rate wobble even while driving essentially straight (verified
+%     on an actual recording: ~30% of samples exceeded the old fixed
+%     0.35 rad/s "turn" threshold), which used to fire a bogus
+%     "corner snap" on almost every one of those - repeatedly yanking the
+%     estimate back to whichever node happened to be nearest instead of
+%     letting it track the road. A longer debounce_time (needs the rate
+%     to stay high for longer before counting as a real turn) and a
+%     finite capture_radius (skip the correction instead of snapping to
+%     a distant, almost certainly wrong node) both measurably helped -
+%     verified in Python against two real recordings plus injected
+%     sensor noise (sensor_params.m) before writing this: with capture_
+%     radius=30, debounce_time=0.3, the corrected estimate tracked the
+%     true trajectory as well as or better than doing no correction at
+%     all, instead of several times worse.
+% Русское резюме: CAPTURE_RADIUS и DEBOUNCE_TIME теперь приходят снаружи
+% (задаются при сборке модели в build_model.m), а не "зашиты" числом
+% здесь - потому что нужное значение зависит от источника данных:
+% нарисованному мышью маршруту (run_v0.m) нужен бесконечный радиус
+% захвата (иначе коррекция необратимо перестаёт работать после одного
+% сильного ухода) и короткий debounce (дребезга по рулю там нет); а
+% реальной записи из игры (run_from_csv.m) наоборот нужен конечный
+% радиус (~30 м) и больший debounce (~0.3 с) - иначе постоянное мелкое
+% дрожание курса при игровом вождении (проверено на реальной записи:
+% ~30% отсчётов превышают порог "поворот") тянет позицию обратно к
+% ближайшему узлу почти на каждом шаге вместо настоящих поворотов -
+% проверено в Python на двух реальных записях с добавленным шумом
+% датчика перед тем, как менять этот файл.
 % INS Mechanization (RK4) - MATLAB Function block.
 %
 % This is the exact code build_model.m tries to insert into the
@@ -24,12 +61,11 @@ function [x, y, psi, v] = ins_mechanization(a_meas, w_meas, Ts, x0, y0, psi0, v0
 % running position is pulled (partially, not teleported outright)
 % toward the nearest map node, and heading is reset to whichever road
 % leaving that node best matches the current heading. CAPTURE_RADIUS
-% used to cap how far away a node could still be and count (so a
-% heavily-drifted estimate couldn't "cheat" by jumping a long
-% distance) - but that meant once drift ever exceeded it, no future
-% turn could ever correct it again, which defeats the point: it's now
-% infinite, so a corner-snap always finds and pulls toward the nearest
-% node, however far off that is.
+% caps how far away that node is still allowed to be for the correction
+% to count at all (skip it instead of snapping to a distant, almost
+% certainly wrong node) - see the note above the function signature for
+% why this needs to be inf for a hand-drawn route but finite for a real
+% recording.
 %
 % An earlier, simpler version of this (bare threshold, no debounce/
 % cooldown) mis-fired repeatedly on a single real corner whenever the
@@ -111,10 +147,9 @@ since_correction = since_correction + Ts; % продвигаем таймер "�
 warmup_time     = 3.0;  % с - длительность разгонного периода (см. пояснение выше)
 rate_threshold_high = 0.35; % рад/с (~20 град/с) - порог входа в состояние "поворот"
 rate_threshold_low  = 0.17; % рад/с (~10 град/с) - порог выхода из "поворота" (с запасом от порога входа - гистерезис)
-debounce_time   = 0.05; % с - сколько нужно продержаться за порогом, чтобы переход засчитался
 cooldown_s      = 1.0;  % с - минимальный промежуток между двумя коррекциями подряд
-capture_radius  = inf;  % м - ограничение на расстояние до перекрёстка снято (см. пояснение выше)
 position_blend  = 0.7;  % 0..1 - доля пути к перекрёстку, на которую сдвигаем позицию за одну коррекцию (не 100%)
+% capture_radius и debounce_time теперь входные параметры блока (см. пояснение выше) - не задаются здесь
 
 if t_elapsed <= warmup_time   % мы всё ещё в разгонном периоде (первые warmup_time секунд)?
     [px, py, edir, warmup_edge] = nearest_edge_point(s(1), s(2), s(3), nodes, edges, warmup_edge); % ищем ближайшую точку на дороге
@@ -141,7 +176,7 @@ else                            % разгонный период закончи
         rate_state = 0;                                 % значит, поворот только что закончился - переходим в "прямая"
         if since_correction >= cooldown_s               % и с прошлой коррекции прошло достаточно времени?
             [nx, ny, npsi, found] = try_snap(s(1), s(2), s(3), nodes, edges, capture_radius); % ищем ближайший узел карты
-            if found                                     % узел нашёлся (сейчас всегда true, т.к. радиус = inf)
+            if found                                     % узел нашёлся в пределах capture_radius?
                 s(1) = s(1) + position_blend * (nx - s(1)); % подтягиваем x на 70% пути к узлу
                 s(2) = s(2) + position_blend * (ny - s(2)); % подтягиваем y на 70% пути к узлу
                 s(3) = npsi;                                % курс - жёстко по лучшей дороге от этого узла
