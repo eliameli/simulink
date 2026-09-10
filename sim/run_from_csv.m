@@ -24,8 +24,12 @@ addpath(here);                              % добавляем sim/ в пут�
 addpath(fullfile(here, '..', 'map'));       % добавляем map/ в путь MATLAB
 addpath(fullfile(here, '..', 'truth'));     % добавляем truth/ в путь MATLAB
 
-%% 1) Build the (synthetic, v0) road map
-map = generate_map();   % строим ту же синтетическую карту дорог, что и в run_v0.m
+%% 1) Build the road map
+% Uses the 3x3 map (not the 5x5 one from run_v0.m/generate_map.m) - it's
+% the one meant to be rebuilt by hand in an external game (see
+% map/MAP_3X3_INFO.md), so CSV recordings actually line up with real
+% roads here instead of a map the game never saw.
+map = generate_map_3x3();   % строим карту 3x3, ту же, что описана для игры в map/MAP_3X3_INFO.md
 
 %% 2) Ground-truth trajectory: load it from a recorded CSV
 % Point this at your own file if it's not the example one committed to
