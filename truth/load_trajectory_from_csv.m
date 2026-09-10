@@ -28,7 +28,18 @@ function truth = load_trajectory_from_csv(csv_path)
 
 T = readtable(csv_path);   % читаем CSV, колонки находятся по именам заголовка (t,x,y,psi,v,a,w)
 
-truth.t      = T.t;      % время
+% Simulink's fixed-step solver always starts its own clock at t=0. Many
+% loggers don't write a sample at the very first instant (the first row
+% here is t=0.02, not t=0), so without this shift the model would run
+% for one extra step beyond the end of this data - a length mismatch
+% between the logged signals and truth further down the pipeline.
+% Русское резюме: симуляция в Simulink всегда стартует с t=0, а запись
+% в игре может начинаться не с нуля (первая строка - t=0.02) - сдвигаем
+% время так, чтобы первая точка была t=0, иначе модель сделает на один
+% шаг больше, чем есть строк в файле, и массивы не совпадут по длине.
+t = T.t - T.t(1);
+
+truth.t      = t;        % время (сдвинуто так, что начинается с 0)
 truth.x      = T.x;      % координата x
 truth.y      = T.y;      % координата y
 truth.psi    = T.psi;    % курс
