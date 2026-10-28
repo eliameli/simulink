@@ -119,10 +119,7 @@ mx = M.x;   % магнитное поле по оси x телефона, мкТ
 my = M.y;   % магнитное поле по оси y телефона, мкТл
 mz = M.z;   % магнитное поле по оси z телефона, мкТл
 
-fprintf('Телефон A, Magnetometer.csv:\n');
-fprintf('  отсчётов: %d\n', height(M));
-fprintf('  медианный шаг по времени: %.4f с (т.е. ~%.0f Гц)\n', ...
-    median(diff(t_mag_s)), 1/median(diff(t_mag_s)));
+
 
 % модуль магнитного поля - длина вектора B
 m_norm = sqrt(mx.^2 + my.^2 + mz.^2);
@@ -153,4 +150,4 @@ plot(t_mag_s, m_norm, 'k');
 grid on; xlabel('время, с'); ylabel('|B|, мкТл');
 title('Модуль - ожидаем сотни мкТл (большой сдвиг от телефона)');
 
-saveas(gcf, fullfile('figs', 'step1_phoneA_mag_uncal.png'));
+
