@@ -42,47 +42,44 @@ az  = T.z;                 % ускорение по оси z телефона, 
 % обратном - так помечено в задании как "подвох"). Значит, в покое все
 % три оси должны быть близки к нулю, а не к 9.81.
 
-%% 3) График: три оси по отдельности
+%% 3) Графики: раскладка 3 строки x 2 столбца (5 графиков из 6 ячеек)
+% subplot(rows, cols, index) - index идёт слева направо, сверху вниз:
+% 1 2
+% 3 4
+% 5 6
 figure('Name', 'А - акселерометр');
-subplot(5,1,1);
+
+subplot(3,2,1);
 plot(t_s, ax, 'r', t_s, ay, 'g', t_s, az, 'b');
-xlabel('время, с'); ylabel('ускорение, м/с^2');
+grid on; xlabel('время, с'); ylabel('ускорение, м/с^2');
+legend('x', 'y', 'z', 'Location', 'best');
+title('Все три оси вместе');
 
-
-
-subplot(5,1,2);
+subplot(3,2,2);
 plot(t_s, ax, 'r');
 grid on; xlabel('время, с'); ylabel('a_x, м/с^2');
 title('Ось x');
 
-subplot(5,1,3);
+subplot(3,2,3);
 plot(t_s, ay, 'g');
 grid on; xlabel('время, с'); ylabel('a_y, м/с^2');
 title('Ось y');
 
-subplot(5,1,4);
+subplot(3,2,4);
 plot(t_s, az, 'b');
 grid on; xlabel('время, с'); ylabel('a_z, м/с^2');
 title('Ось z');
 
-
-grid on;
-xlabel('время, с'); ylabel('ускорение, м/с^2');
-
-title('Телефон A: Accelerometer.csv - ускорение по трём осям телефона');
-
 %% 4) График: модуль вектора ускорения
-
-
-% общее ускорение - корень квадратов ускорений по осям
-% если > 9.81 в покое то система его считает
-
+% общее ускорение - корень квадратов ускорений по осям.
+% Accelerometer.csv - уже без гравитации, поэтому в покое должен быть
+% близок к нулю (подтвердилось на графике).
 a_norm = sqrt(ax.^2 + ay.^2 + az.^2);
 
-subplot(5,1,5);
+subplot(3,2,5);
 plot(t_s, a_norm, 'k');
 grid on; xlabel('время, с'); ylabel('|a|, м/с^2');
-title('Модуль');
+title('Модуль |a|');
 
 
 
@@ -102,20 +99,21 @@ wz = G.z;   % угловая скорость вокруг оси z телефо
 % читать, хотя в коде везде храним рад/с.
 figure('Name', 'А - гироскоп');
 
-subplot(3,1,1);
+subplot(2,2,1);
 plot(t_gyro_s, rad2deg(wx), 'r');
 grid on; xlabel('время, с'); ylabel('\omega_x, град/с');
 title('Гироскоп, ось x');
 
-subplot(3,1,2);
+subplot(2,2,2);
 plot(t_gyro_s, rad2deg(wy), 'g');
 grid on; xlabel('время, с'); ylabel('\omega_y, град/с');
 title('Гироскоп, ось y');
 
-subplot(3,1,3);
+subplot(2,2,3);
 plot(t_gyro_s, rad2deg(wz), 'b');
 grid on; xlabel('время, с'); ylabel('\omega_z, град/с');
 title('Гироскоп, ось z');
+% 4-я ячейка (2,2,4) пустая - графиков всего 3, не 4
 
 
 
@@ -140,22 +138,22 @@ m_norm = sqrt(mx.^2 + my.^2 + mz.^2);
 %% 8) График магнитометра
 figure('Name', 'А - магнитомтетр');
 
-subplot(4,1,1);
+subplot(2,2,1);
 plot(t_mag_s, mx, 'r');
 grid on; xlabel('время, с'); ylabel('B_x, мкТл');
 title('Магнитометр, ось x');
 
-subplot(4,1,2);
+subplot(2,2,2);
 plot(t_mag_s, my, 'g');
 grid on; xlabel('время, с'); ylabel('B_y, мкТл');
 title('Магнитометр, ось y');
 
-subplot(4,1,3);
+subplot(2,2,3);
 plot(t_mag_s, mz, 'b');
 grid on; xlabel('время, с'); ylabel('B_z, мкТл');
 title('Магнитометр, ось z');
 
-subplot(4,1,4);
+subplot(2,2,4);
 plot(t_mag_s, m_norm, 'k');
 grid on; xlabel('время, с'); ylabel('|B|, мкТл');
 title('Модуль магнитного поля Земли');
