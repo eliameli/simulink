@@ -1,9 +1,8 @@
 %% step1_gps_phoneA.m — GPS-трек телефона A
-%
-% Отдельный файл для GPS. Читает Location.csv телефона A (Sensor Logger)
+
+% Отдельный файл для GPS. Читает Location.csv 
 % и строит простой график координат - широта от долготы.
-%
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/)
+
 
 clear; clc; close all;
 
