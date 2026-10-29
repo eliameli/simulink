@@ -5,14 +5,14 @@
 % чтобы сравнить, что меняет калибровка iOS. Акселерометр тут в других
 % единицах (g, не м/с^2) и с гравитацией - см. комментарий ниже.
 %
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/)
+% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/phoneA/)
 
 clear; clc; close all;
 
 % saveas() сама не создаёт папку назначения - на случай, если её ещё нет
 % (пустые папки не хранятся в git).
-if ~exist('figs', 'dir')
-    mkdir('figs');
+if ~exist(fullfile('..','figs'), 'dir')
+    mkdir(fullfile('..','figs'));
 end
 
 %% 1) Путь к файлу
@@ -20,7 +20,7 @@ end
 % файле идут в порядке time, seconds_elapsed, z, y, x - НЕ x,y,z. Поэтому
 % ниже берём колонки по имени, а не по номеру - так не перепутаем оси,
 % даже если порядок столбцов в файле неочевидный.
-accel_file = fullfile('data', 'phone_A_sensorlogger', 'AccelerometerUncalibrated.csv');
+accel_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'AccelerometerUncalibrated.csv');
 
 %% 2) Чтение файла
 % readtable сама разбирает CSV с заголовком и даёт доступ к столбцам по
@@ -76,7 +76,7 @@ title('Модуль |a| - в покое ожидаем ~1, не ~9.81');
 
 
 %% 5) Гироскоп — читаем файл
-gyro_file = fullfile('data', 'phone_A_sensorlogger', 'GyroscopeUncalibrated.csv');
+gyro_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'GyroscopeUncalibrated.csv');
 G = readtable(gyro_file);
 
 t_gyro_s = G.seconds_elapsed;   % время, секунды
@@ -111,7 +111,7 @@ title('Гироскоп, ось z');
 
 
 %% 7) Магнитометр — читаем файл
-mag_file = fullfile('data', 'phone_A_sensorlogger', 'MagnetometerUncalibrated.csv');
+mag_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'MagnetometerUncalibrated.csv');
 M = readtable(mag_file);
 
 t_mag_s = M.seconds_elapsed;   % время, секунды

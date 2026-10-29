@@ -7,7 +7,7 @@
 %
 % Что читаем: bins/data/phone_A_sensorlogger/Accelerometer.csv
 % Что строим: 3 графика осей (x,y,z) + график модуля |a|
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/)
+% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/phoneA/)
 
 clear; clc; close all;
 
@@ -15,8 +15,8 @@ clear; clc; close all;
 % чтобы не падать с "Invalid or missing path", если figs/ ещё нет
 % (пустые папки не хранятся в git, поэтому после git pull её может не
 % быть, даже если она есть в репозитории).
-if ~exist('figs', 'dir')
-    mkdir('figs');
+if ~exist(fullfile('..','figs'), 'dir')
+    mkdir(fullfile('..','figs'));
 end
 
 %% 1) Путь к файлу
@@ -24,7 +24,7 @@ end
 % файле идут в порядке time, seconds_elapsed, z, y, x - НЕ x,y,z. Поэтому
 % ниже берём колонки по имени, а не по номеру - так не перепутаем оси,
 % даже если порядок столбцов в файле неочевидный.
-accel_file = fullfile('data', 'phone_A_sensorlogger', 'Accelerometer.csv');
+accel_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Accelerometer.csv');
 
 %% 2) Чтение файла
 % readtable сама разбирает CSV с заголовком и даёт доступ к столбцам по
@@ -84,7 +84,7 @@ title('Модуль |a|');
 
 
 %% 5) Гироскоп — читаем файл
-gyro_file = fullfile('data', 'phone_A_sensorlogger', 'Gyroscope.csv');
+gyro_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Gyroscope.csv');
 G = readtable(gyro_file);
 
 t_gyro_s = G.seconds_elapsed;   % время, секунды
@@ -119,7 +119,7 @@ title('Гироскоп, ось z');
 
 
 %% 7) Магнитометр — читаем файл
-mag_file = fullfile('data', 'phone_A_sensorlogger', 'Magnetometer.csv');
+mag_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Magnetometer.csv');
 M = readtable(mag_file);
 
 t_mag_s = M.seconds_elapsed;   % время, секунды

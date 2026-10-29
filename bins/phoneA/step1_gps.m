@@ -3,12 +3,12 @@
 % Отдельный файл для GPS. Читает Location.csv телефона A (Sensor Logger)
 % и строит простой график координат - широта от долготы.
 %
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/)
+% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/phoneA/)
 
 clear; clc; close all;
 
 %% 1) Чтение файла
-loc_file = fullfile('data', 'phone_A_sensorlogger', 'Location.csv');
+loc_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Location.csv');
 L = readtable(loc_file);
 
 t_s = L.seconds_elapsed;   % время от начала записи, секунды

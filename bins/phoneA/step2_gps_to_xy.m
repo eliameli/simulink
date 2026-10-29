@@ -3,16 +3,16 @@
 % Телефон A, Location.csv. Два способа перевода широты/долготы в метры,
 % и оценка, насколько велика ошибка от того, что Земля не плоская.
 %
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/)
+% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/phoneA/)
 
 clear; clc; close all;
 
-if ~exist('figs', 'dir')
-    mkdir('figs');
+if ~exist(fullfile('..','figs'), 'dir')
+    mkdir(fullfile('..','figs'));
 end
 
 %% 1) Чтение GPS
-loc_file = fullfile('data', 'phone_A_sensorlogger', 'Location.csv');
+loc_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Location.csv');
 L = readtable(loc_file);
 
 lat_deg = L.latitude;     % широта, градусы
@@ -106,4 +106,4 @@ grid on;
 xlabel('расстояние, км'); ylabel('понижение сферы, м');
 title('Насколько Земля "проседает" под касательной плоскостью');
 
-saveas(gcf, fullfile('figs', 'step2_phoneA_gps_xy.png'));
+saveas(gcf, fullfile('..', 'figs', 'step2_phoneA_gps_xy.png'));
