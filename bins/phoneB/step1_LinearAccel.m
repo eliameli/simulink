@@ -1,12 +1,9 @@
 %% step1_LinearAccel.m — акселерометр телефона B БЕЗ гравитации
 %
-% Параллельно phoneA/step1Uncalibrated.m, но тут наоборот: сравниваем не
-% калиброванный/сырой, а "с гравитацией" (Accelerometer.csv, уже
-% сделано в step1_read_and_look.m) против "без гравитации"
-% (Linear Accelerometer.csv - iOS сама вычла гравитацию, похоже на то,
-% что нам предстоит сделать самим в шаге 5). Единицы те же - м/с^2.
-%
-% Как запускать: открыть в MATLAB, нажать Run (текущая папка - bins/phoneB/)
+
+% Linear Accelerometer.csv - iOS сама вычла гравитацию 
+% Единицы  м/с^2.
+
 
 clear; clc; close all;
 
@@ -23,7 +20,7 @@ az  = T.("Z (m/s^2)");
 % близки к нулю (в отличие от Accelerometer.csv, где в покое ~9.81).
 a_norm = sqrt(ax.^2 + ay.^2 + az.^2);
 
-%% 2) Графики: раскладка 3 строки x 2 столбца
+%% 2) Графики: 
 figure('Name', 'B - Linear Accelerometer (без гравитации)');
 
 subplot(3,2,1);
