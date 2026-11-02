@@ -8,7 +8,7 @@ clear; clc; close all;
 
 %% 1) Чтение файла
 loc_file = fullfile('..', 'data', 'phone_A_sensorlogger', 'Location.csv');
-L = readtable(loc_file);
+L = readtable(loc_file); %читает цсв
 
 t_s = L.seconds_elapsed;   % время от начала записи, секунды
 lat = L.latitude;          % широта, градусы
@@ -18,7 +18,7 @@ lon = L.longitude;         % долгота, градусы
 % x = долгота, y = широта - так привычнее читать как "карту" (восток
 % вправо, север вверх).
 figure('Name', 'А - GPS (Location.csv)');
-plot(lon, lat, 'o-');
+plot(lon, lat); %линии через все точки
 grid on; axis equal;
 xlabel('долгота, °'); ylabel('широта, °');
 title('Телефон A: GPS-трек');
@@ -42,14 +42,14 @@ title('Телефон A: GPS-трек');
 % ДОБРАЗОБРАТЬСЯ ----------------------------------
 
 
-lat_rad = deg2rad(lat);
-dlat = diff(lat_rad);
-dlon = diff(deg2rad(lon));
+lat_rad = deg2rad(lat); %массив из градусов  врадианы
+dlat = diff(lat_rad); %разница между парой соседн элементов
+dlon = diff(deg2rad(lon)); %разница между парой соседн элементов рад
 lat_avg = (lat_rad(1:end-1) + lat_rad(2:end)) / 2;   % средняя широта между двумя точками
 
-east  = dlon .* cos(lat_avg);
-north = dlat;
-course_deg = mod(rad2deg(atan2(east, north)), 360);   % курс в градусах, 0..360
+east  = dlon .* cos(lat_avg); %долгота переведв единицы с широтой
+north = dlat; %разница широт, смещение на север
+course_deg = mod(rad2deg(atan2(east, north)), 360);   % угол между разницей широт и долгот то есть курс в градусах
 
 % курс относится к ИНТЕРВАЛУ между точками i и i+1 - берём время второй
 % точки интервала, чтобы было столько же значений курса, сколько и точек
@@ -58,7 +58,7 @@ t_course = t_s(2:end);
 
 %% 4) График курса во времени
 figure('Name', 'А - GPS курс во времени');
-plot(t_course, course_deg, 'o-');
+plot(t_course, course_deg); %график курса
 grid on;
 xlabel('время, с'); ylabel('курс, °(от севера, по часовой)');
 title('Телефон A: курс по GPS - резкие скачки = повороты');
