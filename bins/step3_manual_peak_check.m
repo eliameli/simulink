@@ -22,12 +22,15 @@ tB_start = 20;   tB_end = 200;   % телефон B, с - подберите п�
 gravA = readtable(fullfile('data', 'phone_A_sensorlogger', 'Gravity.csv'));
 gyroA = readtable(fullfile('data', 'phone_A_sensorlogger', 'Gyroscope.csv'));
 
-t_gravA = gravA.seconds_elapsed;
-g_A = [gravA.x, gravA.y, gravA.z];
-t_A = gyroA.seconds_elapsed;
+t_gravA = gravA.seconds_elapsed; %время каждого отсчета гравитации
+g_A = [gravA.x, gravA.y, gravA.z]; % 3 столбца векторов графитации в конкр момент
+t_A = gyroA.seconds_elapsed; % аналогично гироскоп
 w_A = [gyroA.x, gyroA.y, gyroA.z];
 
-g_A_i = interp1(t_gravA, g_A, t_A, 'linear', 'extrap');
+%гироскоп выдает уг ск в осях телефона но тел может лежать как угодно
+% нам нужно рыскание , то есть пововроты руля
+
+g_A_i = interp1(t_gravA, g_A, t_A, 'linear', 'extrap'); 
 up_A = -g_A_i ./ vecnorm(g_A_i, 2, 2);
 wz_A = sum(w_A .* up_A, 2);
 wz_A_smooth = movmean(wz_A, 20);
