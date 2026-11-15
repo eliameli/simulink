@@ -108,17 +108,22 @@ fprintf('"Вверх" в осях телефона: [%.3f %.3f %.3f]\n', u_mean)
 
 %% 5) Строим ЧИСТЫЙ (точно ортонормированный) базис машины и поворачиваем данные
 % forward = f_unit, up = u_mean (из гравитации - самый надёжный источник),
-% left - достраиваем крест-произведением, чтобы базис был ровно
+% третья ось - достраиваем крест-произведением, чтобы базис был ровно
 % ортогональным (МНК-вектор l_unit из шага 4 не идеально перпендикулярен
-% f_unit/up - а для матрицы поворота это обязательно).
+% f_unit/up - а для матрицы поворота это обязательно). ВАЖНО: порядок
+% в крест-произведении именно fwd×up (а не up×fwd) - матрицы поворота
+% R_y/R_z/R_x внутри БИНС (f_calc_turn_matrix_from_angles.m) собраны как
+% обычные правые системы координат (X=вперёд,Y=вверх,Z=X×Y) - перепутав
+% порядок, получили бы зеркальную (левую) систему осей, и все формулы с
+% углами начали бы врать.
 up_unit = u_mean(:)';
 fwd_unit = f_unit(:)';
-left_unit = cross(up_unit, fwd_unit);
-left_unit = left_unit / norm(left_unit);
+third_unit = cross(fwd_unit, up_unit);
+third_unit = third_unit / norm(third_unit);
 
-% C: столбцы - оси машины (вперёд, вверх, влево), выраженные в осях
+% C: столбцы - оси машины (вперёд, вверх, третья), выраженные в осях
 % телефона. Поворот сырых данных в оси машины: v_машина = C' * v_телефон
-C = [fwd_unit', up_unit', left_unit'];
+C = [fwd_unit', up_unit', third_unit'];
 
 a_vehicle = a_raw * C;   % (N x 3) * (3 x 3) - то же самое, что (C' * v')' построчно
 w_vehicle = w_raw * C;
@@ -145,7 +150,7 @@ plot(t_fixed, a_fixed(:,1), 'r'); hold on;
 plot(t_fixed, a_fixed(:,2), 'g');
 plot(t_fixed, a_fixed(:,3), 'b');
 grid on; xlabel('время, с'); ylabel('ускорение, м/с^2');
-legend('вперёд (X)', 'вверх (Y)', 'влево (Z)', 'Location', 'best');
+legend('вперёд (X)', 'вверх (Y)', 'третья ось (Z = вперёд×вверх)', 'Location', 'best');
 title('Ускорение в осях машины - ось "вверх" в покое должна быть ~ +10 (гравитация)');
 
 subplot(2,1,2);
@@ -153,10 +158,10 @@ plot(t_fixed, rad2deg(w_fixed(:,1)), 'r'); hold on;
 plot(t_fixed, rad2deg(w_fixed(:,2)), 'g');
 plot(t_fixed, rad2deg(w_fixed(:,3)), 'b');
 grid on; xlabel('время, с'); ylabel('угловая скорость, град/с');
-legend('вокруг "вперёд" (крен)', 'вокруг "вверх" (курс)', 'вокруг "влево" (тангаж)', 'Location', 'best');
+legend('вокруг "вперёд" (крен)', 'вокруг "вверх" (курс)', 'вокруг третьей оси (тангаж)', 'Location', 'best');
 title('Угловая скорость в осях машины');
 
 saveas(gcf, fullfile('..','figs','step6_vehicle_axes.png'));
 
-save('step6_real_data.mat', 't_fixed', 'a_fixed', 'w_fixed', 'C', 'up_unit', 'fwd_unit', 'left_unit', ...
+save('step6_real_data.mat', 't_fixed', 'a_fixed', 'w_fixed', 'C', 'up_unit', 'fwd_unit', 'third_unit', ...
     't_good', 'v_good', 'dir_good');
