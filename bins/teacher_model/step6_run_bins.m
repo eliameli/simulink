@@ -42,8 +42,8 @@ load_system(mdl);
 % (удаляя старые, если остались от предыдущего запуска) - так скрипт
 % остаётся идемпотентным и не зависит от того, в каком состоянии
 % сохранился файл модели с прошлого раза.
-old_ports = find_system(mdl, 'SearchDepth', 1, 'BlockType', {'Inport'});
-old_ports = [old_ports; find_system(mdl, 'SearchDepth', 1, 'BlockType', {'Outport'})];
+old_ports = [find_system(mdl, 'SearchDepth', 1, 'BlockType', 'Inport'); ...
+             find_system(mdl, 'SearchDepth', 1, 'BlockType', 'Outport')];
 for k = 1:numel(old_ports)
     delete_block(old_ports{k});
 end
