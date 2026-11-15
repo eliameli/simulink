@@ -77,6 +77,9 @@ set_param(mdl, 'LoadExternalInput', 'on', 'ExternalInput', 'u');
 set_param(mdl, 'StopTime', num2str(t_run(end)));
 set_param(mdl, 'SaveOutput', 'on', 'OutputSaveName', 'yout', 'SaveFormat', 'Array');
 set_param(mdl, 'SaveTime', 'on', 'TimeSaveName', 'tout');
+% модель старая (сохранена в формате ~2015 года) - без этого sim() вернёт
+% просто массив времени вместо объекта с .get(...)
+set_param(mdl, 'ReturnWorkspaceOutputs', 'on');
 
 simOut = sim(mdl);
 
