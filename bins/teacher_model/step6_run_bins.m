@@ -37,25 +37,32 @@ load_system(mdl);
 % BINS.mdl содержит на самом верхнем уровне ОДИН блок - подсистему с
 % именем "BINS" (5 входов, 3 выхода), у которой снаружи нет ни одного
 % провода (сами входы/выходы спрятаны ВНУТРИ неё). Чтобы ExternalInput
-% вообще было куда подключать, добавляем корневые Inport/Outport один
-% раз и соединяем их с портами подсистемы - если они уже есть (скрипт
-% запускали раньше), повторно не добавляем.
-if isempty(find_system(mdl, 'SearchDepth', 1, 'BlockType', 'Inport'))
-    in_names = {'In_a', 'In_w', 'In_startr', 'In_startv', 'In_startangles'};
-    for k = 1:numel(in_names)
-        add_block('simulink/Sources/In1', [mdl '/' in_names{k}], ...
-            'Position', [40, 40 + 80*(k-1), 70, 60 + 80*(k-1)]);
-        add_line(mdl, [in_names{k} '/1'], ['BINS/' num2str(k)], 'autorouting', 'on');
-    end
-    out_names = {'Out_re', 'Out_ve', 'Out_ang'};
-    for k = 1:numel(out_names)
-        add_block('simulink/Sinks/Out1', [mdl '/' out_names{k}], ...
-            'Position', [460, 60 + 90*(k-1), 490, 80 + 90*(k-1)]);
-        add_line(mdl, ['BINS/' num2str(k)], [out_names{k} '/1'], 'autorouting', 'on');
-    end
-    save_system(mdl);
-    fprintf('Добавил корневые Inport/Outport и сохранил %s.mdl\n', mdl);
+% вообще было куда подключать, добавляем корневые Inport/Outport и
+% соединяем их с портами подсистемы. Каждый раз пересобираем их заново
+% (удаляя старые, если остались от предыдущего запуска) - так скрипт
+% остаётся идемпотентным и не зависит от того, в каком состоянии
+% сохранился файл модели с прошлого раза.
+old_ports = find_system(mdl, 'SearchDepth', 1, 'BlockType', {'Inport'});
+old_ports = [old_ports; find_system(mdl, 'SearchDepth', 1, 'BlockType', {'Outport'})];
+for k = 1:numel(old_ports)
+    delete_block(old_ports{k});
 end
+
+in_names = {'In_a', 'In_w', 'In_startr', 'In_startv', 'In_startangles'};
+for k = 1:numel(in_names)
+    add_block('simulink/Sources/In1', [mdl '/' in_names{k}], ...
+        'Position', [40, 40 + 80*(k-1), 70, 60 + 80*(k-1)], ...
+        'PortDimensions', '3');   % каждый вход - вектор из 3 чисел, не скаляр
+    add_line(mdl, [in_names{k} '/1'], ['BINS/' num2str(k)], 'autorouting', 'on');
+end
+out_names = {'Out_re', 'Out_ve', 'Out_ang'};
+for k = 1:numel(out_names)
+    add_block('simulink/Sinks/Out1', [mdl '/' out_names{k}], ...
+        'Position', [460, 60 + 90*(k-1), 490, 80 + 90*(k-1)]);
+    add_line(mdl, ['BINS/' num2str(k)], [out_names{k} '/1'], 'autorouting', 'on');
+end
+save_system(mdl);
+fprintf('Пересобрал корневые Inport/Outport и сохранил %s.mdl\n', mdl);
 
 set_param(mdl, 'LoadExternalInput', 'on', 'ExternalInput', 'u');
 set_param(mdl, 'StopTime', num2str(t_run(end)));
