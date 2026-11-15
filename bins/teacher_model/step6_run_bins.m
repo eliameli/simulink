@@ -42,6 +42,15 @@ load_system(mdl);
 % (удаляя старые, если остались от предыдущего запуска) - так скрипт
 % остаётся идемпотентным и не зависит от того, в каком состоянии
 % сохранился файл модели с прошлого раза.
+% сначала убираем все провода на верхнем уровне (чтобы не остались
+% "висячие" соединения на портах подсистемы BINS после удаления старых
+% Inport/Outport-блоков - именно это и вызывало ошибку "destination
+% port already has a line connection" при повторном запуске)
+root_lines = find_system(mdl, 'SearchDepth', 1, 'FindAll', 'on', 'Type', 'line');
+for k = 1:numel(root_lines)
+    try, delete_line(root_lines(k)); catch, end
+end
+
 old_ports = [find_system(mdl, 'SearchDepth', 1, 'BlockType', 'Inport'); ...
              find_system(mdl, 'SearchDepth', 1, 'BlockType', 'Outport')];
 for k = 1:numel(old_ports)
