@@ -31,20 +31,33 @@ u = [t_run, a_run, w_run, start_r_rep, start_v_rep, start_angles_rep];
 % столбцы: t | a(3) | w(3) | start_r(3) | start_v(3) | start_angles(3)
 
 %% 2) Настраиваем и запускаем модель
-mdl = 'BINS';
+% ВАЖНО: берём BINS1, а не BINS. У "BINS" (как мы разобрали раньше по
+% его схеме) нет внутри компенсации гравитации - в самой bins_model2.mdl
+% он намеренно питается БЕЗгравитационным ускорением прямо от генератора
+% траектории. Реальный акселерометр телефона всегда меряет С гравитацией
+% (в покое ~9.8 м/с^2, не 0) - это ровно то, для чего сделан "BINS1" (там
+% есть сумматор, вычитающий g). Отдельного файла BINS1.mdl в архиве нет -
+% вырезаем эту подсистему из bins_model2.mdl один раз и сохраняем рядом.
+mdl = 'BINS1_standalone';
+if ~isfile([mdl '.mdl']) && ~isfile([mdl '.slx'])
+    load_system('bins_model2');
+    new_system(mdl);
+    open_system(mdl);
+    add_block('bins_model2/BINS1', [mdl '/BINS1']);
+    save_system(mdl);
+    close_system('bins_model2', 0);
+    fprintf('Вырезал подсистему BINS1 из bins_model2.mdl в отдельный файл %s.mdl\n', mdl);
+end
 load_system(mdl);
 
-% BINS.mdl содержит на самом верхнем уровне ОДИН блок - подсистему с
-% именем "BINS" (5 входов, 3 выхода), у которой снаружи нет ни одного
-% провода (сами входы/выходы спрятаны ВНУТРИ неё). Чтобы ExternalInput
-% вообще было куда подключать, добавляем корневые Inport/Outport и
-% соединяем их с портами подсистемы. Каждый раз пересобираем их заново
-% (удаляя старые, если остались от предыдущего запуска) - так скрипт
-% остаётся идемпотентным и не зависит от того, в каком состоянии
-% сохранился файл модели с прошлого раза.
+% Внутри mdl - один блок, подсистема "BINS1" (5 входов, 3 выхода), без
+% проводов наружу. Чтобы ExternalInput было куда подключать, добавляем
+% корневые Inport/Outport и соединяем их с портами подсистемы. Каждый
+% раз пересобираем заново (удаляя старые, если остались от предыдущего
+% запуска) - так скрипт остаётся идемпотентным.
 % сначала убираем все провода на верхнем уровне (чтобы не остались
-% "висячие" соединения на портах подсистемы BINS после удаления старых
-% Inport/Outport-блоков - именно это и вызывало ошибку "destination
+% "висячие" соединения на портах подсистемы после удаления старых
+% Inport/Outport-блоков - именно это вызывало ошибку "destination
 % port already has a line connection" при повторном запуске)
 root_lines = find_system(mdl, 'SearchDepth', 1, 'FindAll', 'on', 'Type', 'line');
 for k = 1:numel(root_lines)
@@ -62,13 +75,13 @@ for k = 1:numel(in_names)
     add_block('simulink/Sources/In1', [mdl '/' in_names{k}], ...
         'Position', [40, 40 + 80*(k-1), 70, 60 + 80*(k-1)], ...
         'PortDimensions', '3');   % каждый вход - вектор из 3 чисел, не скаляр
-    add_line(mdl, [in_names{k} '/1'], ['BINS/' num2str(k)], 'autorouting', 'on');
+    add_line(mdl, [in_names{k} '/1'], ['BINS1/' num2str(k)], 'autorouting', 'on');
 end
 out_names = {'Out_re', 'Out_ve', 'Out_ang'};
 for k = 1:numel(out_names)
     add_block('simulink/Sinks/Out1', [mdl '/' out_names{k}], ...
         'Position', [460, 60 + 90*(k-1), 490, 80 + 90*(k-1)]);
-    add_line(mdl, ['BINS/' num2str(k)], [out_names{k} '/1'], 'autorouting', 'on');
+    add_line(mdl, ['BINS1/' num2str(k)], [out_names{k} '/1'], 'autorouting', 'on');
 end
 save_system(mdl);
 fprintf('Пересобрал корневые Inport/Outport и сохранил %s.mdl\n', mdl);
