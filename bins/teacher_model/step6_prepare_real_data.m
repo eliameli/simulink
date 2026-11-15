@@ -68,7 +68,14 @@ t_mid = t_mid(keep);
 %     (один в один как в step4_heading_and_mag.m)
 g_est = movmean(a_raw, 200);                        % медленная часть полного ускорения = гравитация
 g_at_lin = interp1(t_acc, g_est, t_lin, 'linear', 'extrap');
-up_lin = -g_at_lin ./ vecnorm(g_at_lin, 2, 2);
+% БЕЗ минуса: g_est - это медленная часть ПОЛНОГО акселерометра (сам
+% прибор, не "поле" гравитации), а акселерометр в покое и так "смотрит
+% вверх" (реакция опоры) - минус тут был бы уместен только для
+% Gravity.csv телефона A (там другое соглашение о знаке, см. обсуждение
+% в чате). С минусом "вверх" получался перевёрнутым на 180° - проверено
+% числом: крен тогда выходил ~175-180°, что для стоящей машины
+% бессмысленно; должно быть near 0.
+up_lin = g_at_lin ./ vecnorm(g_at_lin, 2, 2);
 
 a_vert = sum(a_lin .* up_lin, 2) .* up_lin;
 a_horiz = a_lin - a_vert;
@@ -87,7 +94,7 @@ a_horiz_e1 = sum(a_horiz .* e1, 2);
 a_horiz_e2 = sum(a_horiz .* e2, 2);
 
 g_at_gyro = interp1(t_acc, g_est, t_gyro, 'linear', 'extrap');
-up_gyro = -g_at_gyro ./ vecnorm(g_at_gyro, 2, 2);
+up_gyro = g_at_gyro ./ vecnorm(g_at_gyro, 2, 2);   % тот же минус убран, см. комментарий выше
 wz = sum(w_raw .* up_gyro, 2);
 
 %% 4) Продольная ось "вперёд" методом наименьших квадратов (та же модель: a_гор = (dv/dt)*f + (v*wz)*l)
