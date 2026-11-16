@@ -7,7 +7,7 @@
 
 clear; clc; close all;
 
-addpath('osm_map');
+addpath(fullfile('..', 'osm_map'));
 
 load('step6_run_bins_result.mat');   % gps_east, gps_north, bins_east_aligned, bins_north_aligned,
                                       % gps_east_at_anchor, gps_north_at_anchor, lat0, lon0 (в радианах), t_gps_good, err_dist
@@ -17,7 +17,7 @@ load('step6_run_bins_result.mat');   % gps_east, gps_north, bins_east_aligned, b
 lat0_deg = rad2deg(lat0);
 lon0_deg = rad2deg(lon0);
 
-R = read_osm_roads(fullfile('osm_map', 'map.osm'), lat0_deg, lon0_deg);
+R = read_osm_roads(fullfile('..', 'osm_map', 'map.osm'), lat0_deg, lon0_deg);
 
 %% График: дороги серым, поверх - GPS и БИНС
 figure('Name', 'БИНС и GPS поверх карты дорог');
