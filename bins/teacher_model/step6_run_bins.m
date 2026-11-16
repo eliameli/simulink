@@ -183,3 +183,8 @@ grid on; xlabel('время, с'); ylabel('ошибка, м');
 title('Расхождение БИНС-GPS во времени');
 
 saveas(gcf, fullfile('..','figs','step6_bins_vs_gps.png'));
+
+%% 7) Сохраняем для следующего шага (наложение на карту OSM)
+save('step6_run_bins_result.mat', 'gps_east', 'gps_north', ...
+    'bins_east_aligned', 'bins_north_aligned', 'gps_east_at_anchor', 'gps_north_at_anchor', ...
+    'lat0', 'lon0', 't_gps_good', 'err_dist');
